@@ -1,0 +1,66 @@
+"""
+SADNxAI Chat Service
+Main orchestration service with LLM integration
+"""
+
+import os
+import sys
+
+# Add parent directory to path for shared module
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from api.routes import router
+
+# Create FastAPI app
+app = FastAPI(
+    title="SADNxAI Chat Service",
+    description="Conversational AI service for data anonymization with Claude integration",
+    version="1.0.0"
+)
+
+# Configure CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Include routes
+app.include_router(router)
+
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint"""
+    return {"status": "healthy", "service": "chat-service"}
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize on startup"""
+    storage_path = os.getenv("STORAGE_PATH", "/storage")
+    directories = [
+        os.path.join(storage_path, "input"),
+        os.path.join(storage_path, "staging"),
+        os.path.join(storage_path, "output"),
+        os.path.join(storage_path, "reports"),
+    ]
+    for directory in directories:
+        os.makedirs(directory, exist_ok=True)
+
+    print(f"Chat Service started")
+    print(f"  Storage path: {storage_path}")
+    print(f"  Redis URL: {os.getenv('REDIS_URL', 'redis://localhost:6379/0')}")
+    print(f"  Masking Service: {os.getenv('MASKING_SERVICE_URL', 'http://localhost:8001')}")
+    print(f"  Validation Service: {os.getenv('VALIDATION_SERVICE_URL', 'http://localhost:8002')}")
+    print(f"  LLM Mock Mode: {os.getenv('LLM_MOCK_MODE', 'false')}")
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

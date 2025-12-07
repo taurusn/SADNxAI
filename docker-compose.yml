@@ -1,0 +1,92 @@
+version: '3.8'
+
+services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000/api
+    depends_on:
+      - chat-service
+
+  chat-service:
+    build:
+      context: .
+      dockerfile: chat-service/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - LLM_PROVIDER=${LLM_PROVIDER:-ollama}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - OLLAMA_URL=http://ollama:11434
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5:3b}
+      - REDIS_URL=redis://redis:6379/0
+      - MASKING_SERVICE_URL=http://masking-service:8001
+      - VALIDATION_SERVICE_URL=http://validation-service:8002
+      - STORAGE_PATH=/storage
+      - LLM_MOCK_MODE=${LLM_MOCK_MODE:-false}
+    volumes:
+      - storage:/storage
+    depends_on:
+      - redis
+      - masking-service
+      - validation-service
+      - ollama
+
+  masking-service:
+    build:
+      context: .
+      dockerfile: masking-service/Dockerfile
+    ports:
+      - "8001:8001"
+    environment:
+      - STORAGE_PATH=/storage
+    volumes:
+      - storage:/storage
+
+  validation-service:
+    build:
+      context: .
+      dockerfile: validation-service/Dockerfile
+    ports:
+      - "8002:8002"
+    environment:
+      - STORAGE_PATH=/storage
+    volumes:
+      - storage:/storage
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: sadnxai-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-models:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:11434/api/tags || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  storage:
+  redis-data:
+  ollama-models:

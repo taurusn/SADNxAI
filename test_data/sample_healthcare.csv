@@ -1,0 +1,21 @@
+national_id,patient_id,name,phone,email,age,gender,city,admission_date,diagnosis,treatment
+1234567890,MRN001,Ahmed Al-Saud,+966501234567,ahmed@email.com,34,Male,Dammam,2024-03-15,Diabetes,Insulin
+1234567891,MRN002,Fatima Hassan,+966502345678,fatima@email.com,28,Female,Riyadh,2024-03-16,Hypertension,Medication
+1234567892,MRN003,Mohammed Ali,+966503456789,mohammed@email.com,45,Male,Jeddah,2024-03-17,Diabetes,Insulin
+1234567893,MRN004,Sara Abdullah,+966504567890,sara@email.com,52,Female,Dammam,2024-03-18,Heart Disease,Surgery
+1234567894,MRN005,Khalid Omar,+966505678901,khalid@email.com,31,Male,Riyadh,2024-03-19,Diabetes,Medication
+1234567895,MRN006,Noura Ahmed,+966506789012,noura@email.com,67,Female,Mecca,2024-03-20,Hypertension,Medication
+1234567896,MRN007,Abdullah Fahad,+966507890123,abdullah@email.com,29,Male,Dammam,2024-03-21,Diabetes,Insulin
+1234567897,MRN008,Maryam Saleh,+966508901234,maryam@email.com,43,Female,Riyadh,2024-03-22,Cancer,Chemotherapy
+1234567898,MRN009,Youssef Ibrahim,+966509012345,youssef@email.com,38,Male,Jeddah,2024-03-23,Heart Disease,Medication
+1234567899,MRN010,Aisha Mohammed,+966500123456,aisha@email.com,55,Female,Dammam,2024-03-24,Diabetes,Insulin
+1234567800,MRN011,Omar Hassan,+966501111111,omar@email.com,41,Male,Riyadh,2024-03-25,Hypertension,Medication
+1234567801,MRN012,Layla Ali,+966502222222,layla@email.com,36,Female,Dammam,2024-03-26,Diabetes,Medication
+1234567802,MRN013,Saud Nasser,+966503333333,saud@email.com,62,Male,Jeddah,2024-03-27,Cancer,Surgery
+1234567803,MRN014,Huda Khalid,+966504444444,huda@email.com,27,Female,Riyadh,2024-03-28,Diabetes,Insulin
+1234567804,MRN015,Faisal Ahmed,+966505555555,faisal@email.com,49,Male,Dammam,2024-03-29,Heart Disease,Medication
+2098765432,MRN016,Raj Kumar,+966506666666,raj@email.com,33,Male,Riyadh,2024-03-30,Hypertension,Medication
+2098765433,MRN017,Priya Sharma,+966507777777,priya@email.com,44,Female,Jeddah,2024-04-01,Diabetes,Insulin
+2098765434,MRN018,John Smith,+966508888888,john@email.com,58,Male,Dammam,2024-04-02,Cancer,Chemotherapy
+2098765435,MRN019,Maria Garcia,+966509999999,maria@email.com,39,Female,Riyadh,2024-04-03,Diabetes,Medication
+2098765436,MRN020,Chen Wei,+966500000000,chen@email.com,51,Male,Jeddah,2024-04-04,Heart Disease,Surgery

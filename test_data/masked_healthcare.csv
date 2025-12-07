@@ -1,0 +1,21 @@
+patient_id,age,gender,city,admission_date,diagnosis,treatment
+D8A42B22CB08,30-34,Male,Eastern Province,2024-09-05,Diabetes,Insulin
+366D8A6CC0FC,25-29,Female,Riyadh Province,2024-09-11,Hypertension,Medication
+5638242489EB,45-49,Male,Makkah Province,2024-06-25,Diabetes,Insulin
+E4E438597AD4,50-54,Female,Eastern Province,2024-12-03,Heart Disease,Surgery
+A3DC43CD96BF,30-34,Male,Riyadh Province,2024-05-19,Diabetes,Medication
+CCDC258E40C5,65-69,Female,Makkah Province,2023-10-03,Hypertension,Medication
+4A08BB969D0A,25-29,Male,Eastern Province,2024-07-06,Diabetes,Insulin
+6B2DE20D0ED1,40-44,Female,Riyadh Province,2023-08-25,Cancer,Chemotherapy
+1845F5F43837,35-39,Male,Makkah Province,2023-07-31,Heart Disease,Medication
+5A2E37527C3B,55-59,Female,Eastern Province,2025-01-15,Diabetes,Insulin
+A860FF770A2B,40-44,Male,Riyadh Province,2023-06-04,Hypertension,Medication
+CCC40AD3EF08,35-39,Female,Eastern Province,2024-07-02,Diabetes,Medication
+B275F2830450,60-64,Male,Makkah Province,2024-12-24,Cancer,Surgery
+86C160318992,25-29,Female,Riyadh Province,2023-05-01,Diabetes,Insulin
+239C7AF30181,45-49,Male,Eastern Province,2024-10-04,Heart Disease,Medication
+5BBF60040F68,30-34,Male,Riyadh Province,2023-10-20,Hypertension,Medication
+1C2405FA5E39,40-44,Female,Makkah Province,2024-04-28,Diabetes,Insulin
+75823CF9FC02,55-59,Male,Eastern Province,2024-09-09,Cancer,Chemotherapy
+0CFA13D67428,35-39,Female,Riyadh Province,2024-02-05,Diabetes,Medication
+345ACD4D92F8,50-54,Male,Makkah Province,2023-06-26,Heart Disease,Surgery
