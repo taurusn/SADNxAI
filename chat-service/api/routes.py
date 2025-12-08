@@ -35,6 +35,36 @@ session_manager = SessionManager()
 llm_adapter = LLMAdapter(mock_mode=os.getenv("LLM_MOCK_MODE", "false").lower() == "true")
 pipeline_executor = PipelineExecutor()
 
+
+def _build_session_context(session: Session) -> Dict[str, Any]:
+    """Build session context for LLM with file info and classification."""
+    context = {}
+
+    # Add file information if available
+    if session.file_path:
+        context["file_info"] = {
+            "filename": session.title,
+            "columns": session.columns,
+            "row_count": session.row_count,
+            "sample_data": session.sample_data
+        }
+
+    # Add classification if available
+    if session.classification:
+        context["classification"] = {
+            "direct_identifiers": session.classification.direct_identifiers,
+            "quasi_identifiers": session.classification.quasi_identifiers,
+            "linkage_identifiers": session.classification.linkage_identifiers,
+            "date_columns": session.classification.date_columns,
+            "sensitive_attributes": session.classification.sensitive_attributes,
+            "recommended_techniques": session.classification.recommended_techniques
+        }
+
+    # Add current status
+    context["status"] = session.status.value
+
+    return context
+
 # Storage paths
 STORAGE_PATH = os.getenv("STORAGE_PATH", "/storage")
 INPUT_PATH = os.path.join(STORAGE_PATH, "input")
@@ -192,8 +222,11 @@ async def upload_file(session_id: str, file: UploadFile = File(...)):
     session.messages.append(user_msg)
     messages.append({"role": "user", "content": user_msg.content})
 
-    # Get LLM response
-    llm_response = await llm_adapter.chat_async(messages)
+    # Build session context for LLM
+    session_context = _build_session_context(session)
+
+    # Get LLM response with context
+    llm_response = await llm_adapter.chat_async(messages, session_context)
 
     # Process response
     ai_response_text = llm_response.get("content", "")
@@ -273,8 +306,11 @@ async def chat(session_id: str, request: ChatRequest):
     # Get messages for LLM
     messages = conversation.get_messages_for_llm()
 
-    # Get LLM response
-    llm_response = await llm_adapter.chat_async(messages)
+    # Build session context for LLM
+    session_context = _build_session_context(session)
+
+    # Get LLM response with context
+    llm_response = await llm_adapter.chat_async(messages, session_context)
 
     ai_response_text = llm_response.get("content", "")
     classification_updated = None

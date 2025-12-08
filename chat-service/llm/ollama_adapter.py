@@ -67,15 +67,19 @@ class OllamaAdapter:
         """
         Send chat request to Ollama
         """
-        # Build the full message list with system prompt
+        # Build the full message list with our system prompt (includes context + tool instructions)
         full_messages = [
             {"role": "system", "content": self._build_system_prompt(session_context)}
         ]
 
-        # Add conversation history
+        # Add conversation history, SKIP any system messages to avoid duplication
         for msg in messages:
+            role = msg.get("role", "user")
+            # Skip system messages - we already added our comprehensive system prompt
+            if role == "system":
+                continue
             full_messages.append({
-                "role": msg.get("role", "user"),
+                "role": role,
                 "content": msg.get("content", "")
             })
 
@@ -89,8 +93,8 @@ class OllamaAdapter:
                     "stream": False,
                     "keep_alive": "10m",  # Keep model loaded for 10 minutes
                     "options": {
-                        "temperature": 0.7,
-                        "num_ctx": 4096,  # Context window for full prompts
+                        "temperature": 0.1,  # Low temp for structured JSON output
+                        "num_ctx": 8192,  # Increased context window for full prompts
                     }
                 },
                 timeout=self.timeout
