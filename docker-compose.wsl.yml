@@ -1,0 +1,41 @@
+# WSL2 GPU Override for SADNxAI
+# Use this with: docker compose -f docker-compose.yml -f docker-compose.wsl.yml up -d
+#
+# Prerequisites:
+# 1. Run Ollama container with GPU separately:
+#    docker run -d --gpus all -v ollama:/root/.ollama -p 11434:11434 --name ollama --network sadnxai_default ollama/ollama
+# 2. Pull the model:
+#    docker exec ollama ollama pull qwen2.5:7b
+
+version: '3.8'
+
+services:
+  # Disable the built-in ollama service (we run it standalone with GPU)
+  ollama:
+    profiles:
+      - disabled
+
+  # Update chat-service to connect to standalone ollama
+  chat-service:
+    depends_on:
+      - redis
+      - masking-service
+      - validation-service
+      # Note: ollama removed from depends_on (it's external)
+    extra_hosts:
+      - "ollama:host-gateway"
+    environment:
+      - LLM_PROVIDER=${LLM_PROVIDER:-ollama}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - OLLAMA_URL=http://ollama:11434
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5:7b}
+      - REDIS_URL=redis://redis:6379/0
+      - MASKING_SERVICE_URL=http://masking-service:8001
+      - VALIDATION_SERVICE_URL=http://validation-service:8002
+      - STORAGE_PATH=/storage
+      - LLM_MOCK_MODE=${LLM_MOCK_MODE:-false}
+
+networks:
+  default:
+    name: sadnxai_default
+    driver: bridge
