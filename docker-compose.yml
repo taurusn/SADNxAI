@@ -34,7 +34,6 @@ services:
       - redis
       - masking-service
       - validation-service
-      - ollama
 
   masking-service:
     build:
@@ -78,7 +77,12 @@ services:
     deploy:
       resources:
         limits:
-          memory: 4G
+          memory: 8G
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:11434/api/tags || exit 1"]
       interval: 30s

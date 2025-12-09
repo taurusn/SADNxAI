@@ -2,7 +2,8 @@
  * API Client for SADNxAI Chat Service
  */
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
+// Use relative path for production (Cloudflare Tunnel), absolute for local dev
+const API_URL = process.env.NEXT_PUBLIC_API_URL || (typeof window !== 'undefined' && window.location.hostname !== 'localhost' ? '/api' : 'http://localhost:8000/api');
 
 export interface Session {
   id: string;

@@ -7,21 +7,24 @@
 # 2. Pull the model:
 #    docker exec ollama ollama pull qwen2.5:7b
 
-version: '3.8'
-
 services:
-  # Disable the built-in ollama service (we run it standalone with GPU)
+  # Override ollama to use external container with GPU
   ollama:
+    image: ollama/ollama:latest
+    container_name: ollama-placeholder
     profiles:
       - disabled
+    entrypoint: ["echo", "Using external Ollama container"]
 
-  # Update chat-service to connect to standalone ollama
+  # Update chat-service to connect to standalone ollama via host network
   chat-service:
     depends_on:
-      - redis
-      - masking-service
-      - validation-service
-      # Note: ollama removed from depends_on (it's external)
+      redis:
+        condition: service_started
+      masking-service:
+        condition: service_started
+      validation-service:
+        condition: service_started
     extra_hosts:
       - "ollama:host-gateway"
     environment:

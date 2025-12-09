@@ -126,6 +126,7 @@ class ToolExecutor:
         Handle execute_pipeline tool call.
 
         Triggers the masking and validation pipeline.
+        Also applies any threshold updates if provided.
         """
         confirmed = args.get("confirmed", False)
 
@@ -146,6 +147,17 @@ class ToolExecutor:
                 "success": False,
                 "error": "No file uploaded. Please upload a CSV file first."
             }
+
+        # Apply any threshold updates that were passed alongside execute_pipeline
+        threshold_keys = [
+            "k_anonymity_minimum", "k_anonymity_target",
+            "l_diversity_minimum", "l_diversity_target",
+            "t_closeness_minimum", "t_closeness_target",
+            "risk_score_minimum", "risk_score_target"
+        ]
+        threshold_args = {k: v for k, v in args.items() if k in threshold_keys}
+        if threshold_args:
+            self._handle_update_thresholds(threshold_args)
 
         # If callback provided, execute pipeline
         if self.pipeline_callback:

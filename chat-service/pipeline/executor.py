@@ -194,7 +194,7 @@ class PipelineExecutor:
                     f"{self.validation_url}/report",
                     json={
                         "job_id": job_id,
-                        "session": session.model_dump(),
+                        "session": session.model_dump(mode="json"),
                         "validation_result": validation_result
                     }
                 )

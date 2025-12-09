@@ -398,12 +398,21 @@ async def chat(session_id: str, request: ChatRequest):
 def _execute_pipeline(session: Session) -> Dict[str, Any]:
     """Sync wrapper for pipeline execution (used in tool callback)"""
     import asyncio
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
     try:
-        return loop.run_until_complete(pipeline_executor.execute(session))
-    finally:
-        loop.close()
+        # Try to get existing event loop (when called from async context)
+        loop = asyncio.get_running_loop()
+        # Create a task and return a placeholder - actual execution happens async
+        future = asyncio.ensure_future(pipeline_executor.execute(session))
+        # For sync context, we need to wait - but in async context just schedule it
+        return {"status": "pipeline_scheduled", "message": "Pipeline execution started in background"}
+    except RuntimeError:
+        # No running loop - create one (shouldn't happen in FastAPI but handle it)
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(pipeline_executor.execute(session))
+        finally:
+            loop.close()
 
 
 # ============================================================

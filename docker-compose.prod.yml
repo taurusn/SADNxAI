@@ -1,0 +1,10 @@
+# Production override for Cloudflare Tunnel deployment
+# Use with: docker compose -f docker-compose.yml -f docker-compose.wsl.yml -f docker-compose.prod.yml up -d
+
+services:
+  frontend:
+    environment:
+      - NEXT_PUBLIC_API_URL=https://api.sadnxai.taurusn.work/api
+    build:
+      args:
+        - NEXT_PUBLIC_API_URL=https://api.sadnxai.taurusn.work/api

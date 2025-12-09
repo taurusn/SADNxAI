@@ -15,6 +15,7 @@ interface AppState {
   isLoading: boolean;
   isSending: boolean;
   error: string | null;
+  pollingInterval: NodeJS.Timeout | null;
 
   // Actions
   loadSessions: () => Promise<void>;
@@ -24,7 +25,12 @@ interface AppState {
   uploadFile: (file: File) => Promise<void>;
   sendMessage: (message: string) => Promise<void>;
   clearError: () => void;
+  startPolling: () => void;
+  stopPolling: () => void;
 }
+
+// Processing states that should trigger polling
+const PROCESSING_STATES = ['analyzing', 'masking', 'validating', 'approved'];
 
 export const useStore = create<AppState>((set, get) => ({
   // Initial state
@@ -34,6 +40,7 @@ export const useStore = create<AppState>((set, get) => ({
   isLoading: false,
   isSending: false,
   error: null,
+  pollingInterval: null,
 
   // Load all sessions
   loadSessions: async () => {
@@ -68,10 +75,18 @@ export const useStore = create<AppState>((set, get) => ({
 
   // Select and load a session
   selectSession: async (sessionId: string) => {
+    // Stop any existing polling
+    get().stopPolling();
+
     set({ isLoading: true, error: null, currentSessionId: sessionId });
     try {
       const session = await api.getSession(sessionId);
       set({ currentSession: session, isLoading: false });
+
+      // Start polling if in processing state
+      if (PROCESSING_STATES.includes(session.status)) {
+        get().startPolling();
+      }
     } catch (err) {
       set({ error: (err as Error).message, isLoading: false });
     }
@@ -188,6 +203,12 @@ export const useStore = create<AppState>((set, get) => ({
       // Reload full session to get complete state
       await get().selectSession(sessionId);
       await get().loadSessions();
+
+      // Start polling if session is now in processing state
+      const updatedSessionAfterReload = get().currentSession;
+      if (updatedSessionAfterReload && PROCESSING_STATES.includes(updatedSessionAfterReload.status)) {
+        get().startPolling();
+      }
     } catch (err) {
       set({ error: (err as Error).message, isSending: false });
     }
@@ -195,4 +216,51 @@ export const useStore = create<AppState>((set, get) => ({
 
   // Clear error
   clearError: () => set({ error: null }),
+
+  // Start polling for session updates (when in processing state)
+  startPolling: () => {
+    const existing = get().pollingInterval;
+    if (existing) return; // Already polling
+
+    const interval = setInterval(async () => {
+      const sessionId = get().currentSessionId;
+      const currentSession = get().currentSession;
+
+      if (!sessionId || !currentSession) {
+        get().stopPolling();
+        return;
+      }
+
+      // Only poll if in a processing state
+      if (!PROCESSING_STATES.includes(currentSession.status)) {
+        get().stopPolling();
+        return;
+      }
+
+      try {
+        const session = await api.getSession(sessionId);
+        set({ currentSession: session });
+
+        // Stop polling if no longer in processing state
+        if (!PROCESSING_STATES.includes(session.status)) {
+          get().stopPolling();
+          // Also refresh sessions list
+          get().loadSessions();
+        }
+      } catch (err) {
+        console.error('Polling error:', err);
+      }
+    }, 2000); // Poll every 2 seconds
+
+    set({ pollingInterval: interval });
+  },
+
+  // Stop polling
+  stopPolling: () => {
+    const interval = get().pollingInterval;
+    if (interval) {
+      clearInterval(interval);
+      set({ pollingInterval: null });
+    }
+  },
 }));

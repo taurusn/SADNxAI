@@ -265,7 +265,18 @@ Only call execute_pipeline after user says "approve/yes/proceed".
         },
         "execute_pipeline": {
             "required": ["confirmed"],
-            "types": {"confirmed": bool}
+            "types": {
+                "confirmed": bool,
+                # Allow threshold params to be passed alongside execute_pipeline
+                "k_anonymity_minimum": int,
+                "k_anonymity_target": int,
+                "l_diversity_minimum": int,
+                "l_diversity_target": int,
+                "t_closeness_minimum": float,
+                "t_closeness_target": float,
+                "risk_score_minimum": float,
+                "risk_score_target": float
+            }
         },
         "update_thresholds": {
             "required": [],
@@ -297,8 +308,12 @@ Only call execute_pipeline after user says "approve/yes/proceed".
         # Check types
         for field, expected_type in schema["types"].items():
             if field in arguments:
-                if not isinstance(arguments[field], expected_type):
-                    return False, f"Field '{field}' should be {expected_type.__name__}, got {type(arguments[field]).__name__}"
+                value = arguments[field]
+                # Allow int when expecting float (common in JSON)
+                if expected_type == float and isinstance(value, int):
+                    arguments[field] = float(value)  # Convert int to float
+                elif not isinstance(value, expected_type):
+                    return False, f"Field '{field}' should be {expected_type.__name__}, got {type(value).__name__}"
 
         return True, ""
 

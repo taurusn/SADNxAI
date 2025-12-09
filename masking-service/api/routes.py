@@ -17,6 +17,7 @@ from engine.suppressor import Suppressor
 from engine.date_shifter import DateShifter
 from engine.generalizer import Generalizer
 from engine.pseudonymizer import Pseudonymizer
+from engine.text_scrubber import TextScrubber
 
 
 router = APIRouter()
@@ -77,9 +78,44 @@ async def mask_data(request: MaskingRequest) -> MaskingResponse:
 
     classification = request.classification
 
-    # Step 1: Suppress direct identifiers
-    if classification.direct_identifiers:
-        suppressor = Suppressor(classification.direct_identifiers)
+    # Step 0: Extract names BEFORE suppression for text scrubbing
+    names_to_scrub = set()
+    if classification.recommended_techniques:
+        for col, technique in classification.recommended_techniques.items():
+            if technique.upper() == "SUPPRESS" and col in df.columns:
+                # Extract names from columns being suppressed (like 'name' column)
+                names_to_scrub.update(TextScrubber.extract_names_from_column(df, col))
+
+    # Step 0.5: Scrub PII from sensitive text columns (before other operations)
+    text_columns_to_scrub = []
+    if classification.sensitive_attributes:
+        for col in classification.sensitive_attributes:
+            # Scrub text columns (likely to contain free text with embedded PII)
+            if col in df.columns and df[col].dtype == 'object':
+                text_columns_to_scrub.append(col)
+
+    if text_columns_to_scrub:
+        text_scrubber = TextScrubber(
+            text_columns=text_columns_to_scrub,
+            names_to_scrub=names_to_scrub,
+            replacement="[REDACTED]"
+        )
+        scrubbed = text_scrubber.get_scrubbed_columns(df)
+        df = text_scrubber.apply(df)
+        for col in scrubbed:
+            techniques_applied[col] = "TEXT_SCRUBBED"
+
+    # Step 1: Suppress direct identifiers AND any column marked SUPPRESS in recommended_techniques
+    columns_to_suppress = list(classification.direct_identifiers) if classification.direct_identifiers else []
+
+    # Also check recommended_techniques for SUPPRESS
+    if classification.recommended_techniques:
+        for col, technique in classification.recommended_techniques.items():
+            if technique.upper() == "SUPPRESS" and col not in columns_to_suppress and col in df.columns:
+                columns_to_suppress.append(col)
+
+    if columns_to_suppress:
+        suppressor = Suppressor(columns_to_suppress)
         suppressed = suppressor.get_suppressed_columns(df)
         df = suppressor.apply(df)
         for col in suppressed:
