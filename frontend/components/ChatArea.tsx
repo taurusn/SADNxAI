@@ -11,8 +11,8 @@ import { Download, FileText, CheckCircle, XCircle, AlertCircle } from 'lucide-re
 const STATUS_BADGES: Record<string, { label: string; color: string; icon: any }> = {
   idle: { label: 'Ready', color: 'bg-gray-100 text-gray-600', icon: AlertCircle },
   analyzing: { label: 'Analyzing', color: 'bg-yellow-100 text-yellow-700', icon: AlertCircle },
-  proposed: { label: 'Review Plan', color: 'bg-blue-100 text-blue-700', icon: AlertCircle },
-  discussing: { label: 'Discussing', color: 'bg-blue-100 text-blue-700', icon: AlertCircle },
+  proposed: { label: 'Review Plan', color: 'bg-amber-100 text-amber-800', icon: AlertCircle },
+  discussing: { label: 'Discussing', color: 'bg-amber-100 text-amber-800', icon: AlertCircle },
   approved: { label: 'Approved', color: 'bg-purple-100 text-purple-700', icon: CheckCircle },
   masking: { label: 'Processing', color: 'bg-orange-100 text-orange-700', icon: AlertCircle },
   validating: { label: 'Validating', color: 'bg-orange-100 text-orange-700', icon: AlertCircle },

@@ -6,8 +6,8 @@ import { Plus, MessageSquare, Trash2, Shield } from 'lucide-react';
 const STATUS_COLORS: Record<string, string> = {
   idle: 'bg-gray-400',
   analyzing: 'bg-yellow-400',
-  proposed: 'bg-blue-400',
-  discussing: 'bg-blue-400',
+  proposed: 'bg-amber-600',
+  discussing: 'bg-amber-600',
   approved: 'bg-purple-400',
   masking: 'bg-orange-400',
   validating: 'bg-orange-400',
