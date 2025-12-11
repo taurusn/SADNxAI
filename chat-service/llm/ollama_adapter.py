@@ -106,7 +106,7 @@ class OllamaAdapter:
                     "keep_alive": "10m",  # Keep model loaded for 10 minutes
                     "options": {
                         "temperature": 0.1,  # Low temp for structured JSON output
-                        "num_ctx": 8192,  # Increased context window for full prompts
+                        "num_ctx": 24000,  # Full context window for comprehensive prompts
                     }
                 }
 

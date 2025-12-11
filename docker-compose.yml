@@ -21,8 +21,8 @@ services:
     environment:
       - LLM_PROVIDER=${LLM_PROVIDER:-ollama}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      - OLLAMA_URL=http://ollama:11434
-      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5:7b}
+      - OLLAMA_URL=https://slm.sadn.site
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5:14b}
       - REDIS_URL=redis://redis:6379/0
       - MASKING_SERVICE_URL=http://masking-service:8001
       - VALIDATION_SERVICE_URL=http://validation-service:8002
