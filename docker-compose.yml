@@ -5,10 +5,12 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_API_URL=https://sadnxaiapi.sadn.site/api
     ports:
       - "3000:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000/api
+      - NEXT_PUBLIC_API_URL=https://sadnxaiapi.sadn.site/api
     depends_on:
       - chat-service
 
@@ -21,7 +23,7 @@ services:
     environment:
       - LLM_PROVIDER=${LLM_PROVIDER:-ollama}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      - OLLAMA_URL=https://slm.sadn.site
+      - OLLAMA_URL=http://host.docker.internal:11434
       - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5:14b}
       - REDIS_URL=redis://redis:6379/0
       - MASKING_SERVICE_URL=http://masking-service:8001
@@ -65,32 +67,6 @@ services:
       - redis-data:/data
     command: redis-server --appendonly yes
 
-  ollama:
-    image: ollama/ollama:latest
-    container_name: sadnxai-ollama
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama-models:/root/.ollama
-    environment:
-      - OLLAMA_HOST=0.0.0.0
-    deploy:
-      resources:
-        limits:
-          memory: 8G
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:11434/api/tags || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 10s
-
 volumes:
   storage:
   redis-data:
-  ollama-models:
