@@ -107,7 +107,7 @@ class PipelineExecutor:
                 ]
             )
 
-            # Step 3: Generate report (if validation passed or for all completions)
+            # Step 3: Generate report (always, regardless of pass/fail)
             report_result = await self._call_report_service(
                 job_id=job_id,
                 session=session,
@@ -117,14 +117,14 @@ class PipelineExecutor:
             if "error" not in report_result:
                 result["report_path"] = report_result["report_path"]
 
-            # Step 4: Move to output if passed
-            if validation_result["passed"]:
-                output_path = await self._move_to_output(
-                    job_id=job_id,
-                    masked_path=masking_result["output_path"],
-                    original_filename=session.title
-                )
-                result["output_path"] = output_path
+            # Step 4: Move to output (always, so user can download even if failed)
+            output_path = await self._move_to_output(
+                job_id=job_id,
+                masked_path=masking_result["output_path"],
+                original_filename=session.title,
+                passed=validation_result["passed"]
+            )
+            result["output_path"] = output_path
 
         except Exception as e:
             result["error"] = str(e)
@@ -207,12 +207,13 @@ class PipelineExecutor:
         self,
         job_id: str,
         masked_path: str,
-        original_filename: str
+        original_filename: str,
+        passed: bool = True
     ) -> str:
         """Move masked file to output directory with proper naming."""
         import shutil
 
-        # Generate output filename
+        # Generate output filename (same name regardless of pass/fail for easy retry)
         base_name = os.path.splitext(original_filename)[0]
         output_filename = f"{base_name}_anonymized.csv"
         output_dir = os.path.join(self.storage_path, "output")
@@ -220,6 +221,10 @@ class PipelineExecutor:
 
         # Ensure directory exists
         os.makedirs(output_dir, exist_ok=True)
+
+        # Remove old file if exists (for retry scenarios)
+        if os.path.exists(output_path):
+            os.remove(output_path)
 
         # Copy file
         shutil.copy2(masked_path, output_path)
