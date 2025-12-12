@@ -343,6 +343,16 @@ async def chat(session_id: str, request: ChatRequest):
             # Handle pipeline execution
             if tool_name == "execute_pipeline" and result.get("success"):
                 session.status = SessionStatus.MASKING
+
+                # Clean up old output/report files before retry
+                if session.output_path and os.path.exists(session.output_path):
+                    os.remove(session.output_path)
+                    session.output_path = None
+                if session.report_path and os.path.exists(session.report_path):
+                    os.remove(session.report_path)
+                    session.report_path = None
+                session.validation_result = None
+
                 session_manager.update_session(session)
 
                 # Execute pipeline asynchronously
@@ -354,15 +364,17 @@ async def chat(session_id: str, request: ChatRequest):
                 else:
                     if pipeline_result.get("validation_result"):
                         session.validation_result = pipeline_result["validation_result"]
+                        # Always save output and report paths (available for download regardless of pass/fail)
+                        session.output_path = pipeline_result.get("output_path")
+                        session.report_path = pipeline_result.get("report_path")
+
                         if pipeline_result["validation_result"].passed:
                             session.status = SessionStatus.COMPLETED
-                            session.output_path = pipeline_result.get("output_path")
-                            session.report_path = pipeline_result.get("report_path")
                             ai_response_text = "Anonymization complete! Validation passed. You can now download the anonymized CSV and privacy report."
                         else:
                             session.status = SessionStatus.FAILED
                             failed = pipeline_result["validation_result"].failed_metrics
-                            ai_response_text = f"Validation failed for metrics: {', '.join(failed)}. Would you like to adjust the generalization levels or thresholds and try again?"
+                            ai_response_text = f"Validation failed for metrics: {', '.join(failed)}. You can still download the anonymized CSV and report. Would you like to adjust the generalization levels or thresholds and try again?"
 
             # Track classification updates
             if tool_name == "classify_columns" and result.get("success"):

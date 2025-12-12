@@ -200,14 +200,17 @@ class OllamaAdapter:
         # Add compact tool calling instructions
         prompt += """
 
-## TOOL FORMAT
-When you need to call a tool, output:
+## TOOL FORMAT (REQUIRED - NOT OPTIONAL)
+You MUST output tool calls in this exact format:
 ```tool_call
 {"tool": "tool_name", "arguments": {...}}
 ```
 
-Tools: classify_columns, execute_pipeline, update_thresholds
-Only call execute_pipeline after user says "approve/yes/proceed".
+MANDATORY TOOL CALLS:
+1. After analyzing uploaded file → MUST call `classify_columns` with all fields
+2. After user says "approve/yes/proceed" → MUST call `execute_pipeline` with {"confirmed": true}
+
+Text descriptions WITHOUT tool calls will NOT work. The system ONLY processes tool calls.
 """
 
         # Add session context if available

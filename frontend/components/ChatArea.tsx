@@ -67,8 +67,8 @@ export default function ChatArea() {
           </span>
         </div>
 
-        {/* Download buttons */}
-        {currentSession.status === 'completed' && (
+        {/* Download buttons - show for both completed and failed (with output available) */}
+        {(currentSession.status === 'completed' || currentSession.status === 'failed') && currentSession.output_path && (
           <div className="flex items-center gap-2">
             <a
               href={api.getDataDownloadUrl(currentSession.id)}
@@ -77,13 +77,15 @@ export default function ChatArea() {
               <Download className="w-4 h-4" />
               Download CSV
             </a>
-            <a
-              href={api.getReportDownloadUrl(currentSession.id)}
-              className="flex items-center gap-2 px-3 py-1.5 bg-gray-800 text-white text-sm rounded-lg hover:bg-gray-700 transition-colors"
-            >
-              <FileText className="w-4 h-4" />
-              Download Report
-            </a>
+            {currentSession.report_path && (
+              <a
+                href={api.getReportDownloadUrl(currentSession.id)}
+                className="flex items-center gap-2 px-3 py-1.5 bg-gray-800 text-white text-sm rounded-lg hover:bg-gray-700 transition-colors"
+              >
+                <FileText className="w-4 h-4" />
+                Download Report
+              </a>
+            )}
           </div>
         )}
       </header>
