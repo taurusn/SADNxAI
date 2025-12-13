@@ -1,4 +1,4 @@
-# SADNxAI CI/CD Pipeline
+# SADNxAI CI/CD Pipeline  
 # Only runs on main branch
 
 when:
@@ -7,13 +7,13 @@ when:
 
 steps:
   - name: lint-backend
-    image: ghcr.io/astral-sh/ruff:latest
+    image: python:3.11-slim
     commands:
+      - python -m pip install ruff --quiet --timeout 30 --retries 2
       - ruff check chat-service/ masking-service/ validation-service/ --ignore E501
-      - echo "Backend lint passed"
+      - echo "Lint passed"
 
   - name: deploy
     image: alpine
     commands:
-      - echo "Deployment triggered"
-      - echo "SADNxAI deployed successfully"
+      - echo "Deploy complete"
