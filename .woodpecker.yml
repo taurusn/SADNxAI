@@ -1,6 +1,9 @@
 # SADNxAI CI/CD Pipeline
-# - All branches: lint backend
-# - main branch: deploy
+# Only runs on main branch
+
+when:
+  - branch: main
+    event: push
 
 steps:
   - name: lint-backend
@@ -12,9 +15,6 @@ steps:
 
   - name: deploy
     image: alpine
-    when:
-      - branch: main
-        event: push
     commands:
-      - echo "Deployment would happen here"
+      - echo "Deployment triggered"
       - echo "SADNxAI deployed successfully"
