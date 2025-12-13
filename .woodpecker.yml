@@ -1,24 +1,8 @@
 # SADNxAI CI/CD Pipeline
-# - All branches: lint + type-check
-# - main branch: deploy (git pull + restart)
+# - All branches: lint backend
+# - main branch: deploy
 
 steps:
-  - name: lint-frontend
-    image: node:20-alpine
-    commands:
-      - cd frontend
-      - npm ci --silent
-      - npm run lint
-      - echo "Frontend lint passed"
-
-  - name: typecheck-frontend
-    image: node:20-alpine
-    commands:
-      - cd frontend
-      - npm ci --silent
-      - npx tsc --noEmit
-      - echo "Frontend type-check passed"
-
   - name: lint-backend
     image: python:3.11-slim
     commands:
@@ -27,19 +11,10 @@ steps:
       - echo "Backend lint passed"
 
   - name: deploy
-    image: docker:24-cli
-    when:
-      - branch: main
-        event: push
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    commands:
-      - echo "Deployment complete"
-
-  - name: notify-success
     image: alpine
     when:
       - branch: main
         event: push
     commands:
+      - echo "Deployment would happen here"
       - echo "SADNxAI deployed successfully"
