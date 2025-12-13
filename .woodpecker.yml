@@ -7,9 +7,8 @@ when:
 
 steps:
   - name: lint-backend
-    image: python:3.11-slim
+    image: ghcr.io/astral-sh/ruff:latest
     commands:
-      - pip install ruff --quiet
       - ruff check chat-service/ masking-service/ validation-service/ --ignore E501
       - echo "Backend lint passed"
 
