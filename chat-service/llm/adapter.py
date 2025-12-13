@@ -10,7 +10,7 @@ from typing import List, Dict, Any, Optional
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from shared.openai_schema import get_tools, get_system_prompt
+from shared.openai_schema import get_tools
 
 
 class LLMAdapter:

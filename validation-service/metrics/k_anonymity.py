@@ -5,7 +5,7 @@ from at least k-1 other records with respect to quasi-identifiers.
 """
 
 import pandas as pd
-from typing import List, Dict, Tuple
+from typing import List, Dict
 
 
 def calculate_k_anonymity(

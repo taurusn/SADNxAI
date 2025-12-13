@@ -313,7 +313,7 @@ Text descriptions WITHOUT tool calls will NOT work. The system ONLY processes to
             if field in arguments:
                 value = arguments[field]
                 # Allow int when expecting float (common in JSON)
-                if expected_type == float and isinstance(value, int):
+                if expected_type is float and isinstance(value, int):
                     arguments[field] = float(value)  # Convert int to float
                 elif not isinstance(value, expected_type):
                     return False, f"Field '{field}' should be {expected_type.__name__}, got {type(value).__name__}"

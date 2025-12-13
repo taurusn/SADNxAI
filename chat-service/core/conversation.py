@@ -8,7 +8,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from shared.models import Session, SessionStatus, Message, MessageRole, Classification
+from shared.models import Session, SessionStatus
 from shared.openai_schema import get_system_prompt
 
 
@@ -114,7 +114,7 @@ class ConversationManager:
 
         # Current thresholds
         th = self.session.thresholds
-        parts.append(f"\nPRIVACY THRESHOLDS:")
+        parts.append("\nPRIVACY THRESHOLDS:")
         parts.append(f"  k-Anonymity: min={th.k_anonymity.minimum}, target={th.k_anonymity.target}")
         parts.append(f"  l-Diversity: min={th.l_diversity.minimum}, target={th.l_diversity.target}")
         parts.append(f"  t-Closeness: min={th.t_closeness.minimum}, target={th.t_closeness.target}")

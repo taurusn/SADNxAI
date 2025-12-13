@@ -4,10 +4,9 @@ Applies random but consistent date offsets to preserve temporal relationships
 """
 
 import pandas as pd
-import numpy as np
 import hashlib
 from datetime import timedelta
-from typing import List, Optional
+from typing import List
 
 
 class DateShifter:

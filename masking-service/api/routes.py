@@ -6,12 +6,12 @@ import os
 import pandas as pd
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import Dict, List, Optional
+from typing import Dict
 
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from shared.models import Classification, MaskingTechnique
+from shared.models import Classification
 
 from engine.suppressor import Suppressor
 from engine.date_shifter import DateShifter
@@ -72,7 +72,6 @@ async def mask_data(request: MaskingRequest) -> MaskingResponse:
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to read CSV: {str(e)}")
 
-    original_columns = len(df.columns)
     rows_processed = len(df)
     techniques_applied = {}
 
@@ -105,14 +104,18 @@ async def mask_data(request: MaskingRequest) -> MaskingResponse:
         for col in scrubbed:
             techniques_applied[col] = "TEXT_SCRUBBED"
 
-    # Step 1: Suppress direct identifiers AND any column marked SUPPRESS in recommended_techniques
-    columns_to_suppress = list(classification.direct_identifiers) if classification.direct_identifiers else []
+    # Step 1: Suppress columns - USE recommended_techniques as source of truth
+    # This ensures correct behavior even if AI categorizes a column in the wrong array
+    columns_to_suppress = []
 
-    # Also check recommended_techniques for SUPPRESS
     if classification.recommended_techniques:
+        # Primary: Use recommended_techniques to determine what to suppress
         for col, technique in classification.recommended_techniques.items():
-            if technique.upper() == "SUPPRESS" and col not in columns_to_suppress and col in df.columns:
+            if technique.upper() == "SUPPRESS" and col in df.columns:
                 columns_to_suppress.append(col)
+    else:
+        # Fallback: If no recommended_techniques, use direct_identifiers array
+        columns_to_suppress = list(classification.direct_identifiers) if classification.direct_identifiers else []
 
     if columns_to_suppress:
         suppressor = Suppressor(columns_to_suppress)
@@ -121,10 +124,21 @@ async def mask_data(request: MaskingRequest) -> MaskingResponse:
         for col in suppressed:
             techniques_applied[col] = "SUPPRESSED"
 
-    # Step 2: Date shift
-    if classification.date_columns:
+    # Step 2: Date shift - USE recommended_techniques as source of truth
+    columns_to_date_shift = []
+
+    if classification.recommended_techniques:
+        # Primary: Use recommended_techniques to determine what to date shift
+        for col, technique in classification.recommended_techniques.items():
+            if technique.upper() == "DATE_SHIFT" and col in df.columns:
+                columns_to_date_shift.append(col)
+    else:
+        # Fallback: If no recommended_techniques, use date_columns array
+        columns_to_date_shift = list(classification.date_columns) if classification.date_columns else []
+
+    if columns_to_date_shift:
         date_shifter = DateShifter(
-            date_columns=classification.date_columns,
+            date_columns=columns_to_date_shift,
             salt=request.salt,
             min_days=-365,
             max_days=365
@@ -134,11 +148,22 @@ async def mask_data(request: MaskingRequest) -> MaskingResponse:
         for col in shifted:
             techniques_applied[col] = "DATE_SHIFTED"
 
-    # Step 3: Generalize quasi-identifiers
-    if classification.quasi_identifiers:
+    # Step 3: Generalize - USE recommended_techniques as source of truth
+    columns_to_generalize = []
+
+    if classification.recommended_techniques:
+        # Primary: Use recommended_techniques to determine what to generalize
+        for col, technique in classification.recommended_techniques.items():
+            if technique.upper() == "GENERALIZE" and col in df.columns:
+                columns_to_generalize.append(col)
+    else:
+        # Fallback: If no recommended_techniques, use quasi_identifiers array
+        columns_to_generalize = list(classification.quasi_identifiers) if classification.quasi_identifiers else []
+
+    if columns_to_generalize:
         gen_config = classification.generalization_config
         generalizer = Generalizer(
-            quasi_identifiers=classification.quasi_identifiers,
+            quasi_identifiers=columns_to_generalize,
             age_level=gen_config.age_level,
             location_level=gen_config.location_level,
             date_level=gen_config.date_level
@@ -148,10 +173,21 @@ async def mask_data(request: MaskingRequest) -> MaskingResponse:
         for col in generalized:
             techniques_applied[col] = "GENERALIZED"
 
-    # Step 4: Pseudonymize linkage identifiers
-    if classification.linkage_identifiers:
+    # Step 4: Pseudonymize - USE recommended_techniques as source of truth
+    columns_to_pseudonymize = []
+
+    if classification.recommended_techniques:
+        # Primary: Use recommended_techniques to determine what to pseudonymize
+        for col, technique in classification.recommended_techniques.items():
+            if technique.upper() == "PSEUDONYMIZE" and col in df.columns:
+                columns_to_pseudonymize.append(col)
+    else:
+        # Fallback: If no recommended_techniques, use linkage_identifiers array
+        columns_to_pseudonymize = list(classification.linkage_identifiers) if classification.linkage_identifiers else []
+
+    if columns_to_pseudonymize:
         pseudonymizer = Pseudonymizer(
-            linkage_columns=classification.linkage_identifiers,
+            linkage_columns=columns_to_pseudonymize,
             salt=request.salt,
             hash_length=12
         )
