@@ -10,7 +10,7 @@ steps:
     image: docker:24-cli
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - /d/IAU/skill\ forge/Sadn-bank/SADNxAI:/app
+      - "D:/IAU/skill forge/Sadn-bank/SADNxAI:/app"
     commands:
       - apk add --no-cache git
       - cd /app
