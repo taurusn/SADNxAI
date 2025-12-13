@@ -1,0 +1,50 @@
+# Woodpecker CI Server + Agent
+# Run with: docker compose -f docker-compose.woodpecker.yml up -d
+#
+# Prerequisites:
+#   1. Create GitHub OAuth App (see WOODPECKER_SETUP.md)
+#   2. Create ci.sadn.site in Cloudflare Tunnel
+#   3. Set environment variables in .env.woodpecker
+
+services:
+  woodpecker-server:
+    image: woodpeckerci/woodpecker-server:latest
+    container_name: woodpecker-server
+    restart: always
+    ports:
+      - "8080:8000"
+    volumes:
+      - woodpecker-server-data:/var/lib/woodpecker/
+    environment:
+      # Server URL (your Cloudflare Tunnel domain)
+      - WOODPECKER_HOST=https://ci.sadn.site
+      - WOODPECKER_OPEN=false
+
+      # GitHub OAuth (set these in .env.woodpecker)
+      - WOODPECKER_GITHUB=true
+      - WOODPECKER_GITHUB_CLIENT=${WOODPECKER_GITHUB_CLIENT}
+      - WOODPECKER_GITHUB_SECRET=${WOODPECKER_GITHUB_SECRET}
+
+      # Agent secret (generate with: openssl rand -hex 32)
+      - WOODPECKER_AGENT_SECRET=${WOODPECKER_AGENT_SECRET}
+
+      # Admin user (your GitHub username)
+      - WOODPECKER_ADMIN=abdullatifaabdullah,taurusn
+
+  woodpecker-agent:
+    image: woodpeckerci/woodpecker-agent:latest
+    container_name: woodpecker-agent
+    restart: always
+    depends_on:
+      - woodpecker-server
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Mount the project directory for local deployment
+      - /d/IAU/skill forge/Sadn-bank/SADNxAI:/workspace/sadnxai:rw
+    environment:
+      - WOODPECKER_SERVER=woodpecker-server:9000
+      - WOODPECKER_AGENT_SECRET=${WOODPECKER_AGENT_SECRET}
+      - WOODPECKER_MAX_WORKFLOWS=2
+
+volumes:
+  woodpecker-server-data:
