@@ -1,5 +1,5 @@
 # SADNxAI CI/CD Pipeline
-# Only runs on main branch - minimal version
+# Only runs on main branch
 
 when:
   - branch: main
@@ -7,7 +7,15 @@ when:
 
 steps:
   - name: deploy
-    image: alpine
+    image: docker:24-cli
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /d/IAU/skill\ forge/Sadn-bank/SADNxAI:/app
     commands:
-      - echo "Deploying SADNxAI..."
-      - echo "Done!"
+      - apk add --no-cache git
+      - cd /app
+      - git config --global --add safe.directory /app
+      - git pull origin main
+      - docker compose down frontend
+      - docker compose up -d --build frontend
+      - echo "Frontend redeployed!"
