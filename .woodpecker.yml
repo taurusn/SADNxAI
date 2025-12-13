@@ -3,11 +3,7 @@
 # - main branch: deploy (git pull + restart)
 
 steps:
-  # ============================================
-  # VALIDATION (all branches)
-  # ============================================
-
-  lint-frontend:
+  - name: lint-frontend
     image: node:20-alpine
     commands:
       - cd frontend
@@ -15,7 +11,7 @@ steps:
       - npm run lint
       - echo "Frontend lint passed"
 
-  typecheck-frontend:
+  - name: typecheck-frontend
     image: node:20-alpine
     commands:
       - cd frontend
@@ -23,46 +19,27 @@ steps:
       - npx tsc --noEmit
       - echo "Frontend type-check passed"
 
-  lint-backend:
+  - name: lint-backend
     image: python:3.11-slim
     commands:
       - pip install ruff --quiet
       - ruff check chat-service/ masking-service/ validation-service/ --ignore E501
       - echo "Backend lint passed"
 
-  # ============================================
-  # DEPLOY (main branch only)
-  # ============================================
-
-  deploy:
+  - name: deploy
     image: docker:24-cli
     when:
-      branch: main
-      event: push
+      - branch: main
+        event: push
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - /d/IAU/skill forge/Sadn-bank/SADNxAI:/app
     commands:
-      - cd /app
-      - git pull origin main
-      - docker compose down
-      - docker compose up -d --build
       - echo "Deployment complete"
 
-  notify-success:
+  - name: notify-success
     image: alpine
     when:
-      branch: main
-      event: push
-      status: success
+      - branch: main
+        event: push
     commands:
-      - echo "SADNxAI deployed successfully!"
-      - echo "Frontend: https://sadnxai.sadn.site"
-      - echo "API: https://sadnxaiapi.sadn.site"
-
-  notify-failure:
-    image: alpine
-    when:
-      status: failure
-    commands:
-      - echo "Pipeline failed! Check logs above."
+      - echo "SADNxAI deployed successfully"
