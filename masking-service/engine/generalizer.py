@@ -6,7 +6,6 @@ Applies generalization hierarchies to quasi-identifiers
 import pandas as pd
 import re
 from typing import List, Dict, Optional, Any
-from datetime import datetime
 
 
 # Saudi Arabia location hierarchies
@@ -252,7 +251,7 @@ class Generalizer:
                 dt = pd.to_datetime(date_val)
             else:
                 dt = pd.Timestamp(date_val)
-        except:
+        except Exception:
             return str(date_val)
 
         if level == 0:

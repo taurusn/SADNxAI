@@ -38,3 +38,6 @@ logs/
 
 # Docker
 *.tar
+
+# Woodpecker CI
+.env.woodpecker

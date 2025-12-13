@@ -57,7 +57,7 @@ async def startup_event():
     for directory in directories:
         os.makedirs(directory, exist_ok=True)
 
-    print(f"Chat Service started")
+    print("Chat Service started")
     print(f"  Storage path: {storage_path}")
     print(f"  Redis URL: {os.getenv('REDIS_URL', 'redis://localhost:6379/0')}")
     print(f"  Masking Service: {os.getenv('MASKING_SERVICE_URL', 'http://localhost:8001')}")

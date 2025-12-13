@@ -5,7 +5,6 @@ Main API for frontend communication
 
 import os
 import json
-import shutil
 import pandas as pd
 from fastapi import APIRouter, HTTPException, UploadFile, File
 from fastapi.responses import FileResponse
@@ -17,7 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 
 from shared.models import (
     Session, SessionStatus, Message, MessageRole,
-    Classification, PrivacyThresholds, ToolCall,
+    ToolCall,
     ChatRequest, ChatResponse, UploadResponse
 )
 
@@ -414,7 +413,7 @@ def _execute_pipeline(session: Session) -> Dict[str, Any]:
         # Try to get existing event loop (when called from async context)
         loop = asyncio.get_running_loop()
         # Create a task and return a placeholder - actual execution happens async
-        future = asyncio.ensure_future(pipeline_executor.execute(session))
+        asyncio.ensure_future(pipeline_executor.execute(session))
         # For sync context, we need to wait - but in async context just schedule it
         return {"status": "pipeline_scheduled", "message": "Pipeline execution started in background"}
     except RuntimeError:

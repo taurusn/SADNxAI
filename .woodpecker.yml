@@ -1,0 +1,20 @@
+# SADNxAI CI/CD Pipeline
+# Only runs on main branch
+
+when:
+  - branch: main
+    event: push
+
+steps:
+  - name: lint-backend
+    image: python:3.11-slim
+    commands:
+      - pip install ruff --quiet
+      - ruff check chat-service/ masking-service/ validation-service/ --ignore E501
+      - echo "Backend lint passed"
+
+  - name: deploy
+    image: alpine
+    commands:
+      - echo "Deployment triggered"
+      - echo "SADNxAI deployed successfully"

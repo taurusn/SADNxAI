@@ -3,7 +3,6 @@ Tool Executor
 Handles execution of LLM tool calls
 """
 
-import json
 import os
 from typing import Dict, Any, Callable
 
@@ -12,7 +11,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 
 from shared.models import (
     Session, Classification, GeneralizationConfig,
-    MaskingTechnique, ThresholdRange, PrivacyThresholds
+    MaskingTechnique
 )
 
 

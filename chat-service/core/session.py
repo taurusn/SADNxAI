@@ -3,7 +3,6 @@ Session Manager
 Handles session persistence with Redis
 """
 
-import json
 import os
 import uuid
 from datetime import datetime
