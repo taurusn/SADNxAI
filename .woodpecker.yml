@@ -28,6 +28,6 @@ steps:
       - "D:/IAU/skill forge/Sadn-bank/SADNxAI:/app"
     commands:
       - cd /app
-      - docker compose down frontend
-      - docker compose up -d --build frontend
+      - docker compose -p sadnxai down frontend
+      - docker compose -p sadnxai up -d --build frontend
       - echo "Frontend redeployed!"
