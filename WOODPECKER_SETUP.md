@@ -1,169 +1,188 @@
-# Woodpecker CI Setup for SADNxAI
+# Woodpecker CI/CD Setup for SADNxAI
 
 ## Overview
 
 ```
-GitHub (push) → Webhook → Cloudflare Tunnel (ci.sadn.site) → Woodpecker → Deploy
+GitHub (push to main) 
+    ↓ webhook
+Cloudflare Tunnel (ci.sadn.site)
+    ↓
+Woodpecker Server (localhost:8080)
+    ↓
+Woodpecker Agent → Docker → Rebuild & Deploy
 ```
 
-**Pipeline behavior:**
-- All branches: Lint + type-check (frontend & backend)
-- main only: git pull + docker compose restart
+## What the Pipeline Does
+
+| Step | Action |
+|------|--------|
+| **deploy** | Git pull latest code from main |
+| **rebuild** | `docker compose down frontend` → `docker compose up -d --build frontend` |
+
+**Trigger:** Push to `main` branch only
 
 ---
 
-## Step 1: Create GitHub OAuth App
+## Architecture
+
+| Component | URL/Port | Purpose |
+|-----------|----------|---------|
+| Woodpecker Server | localhost:8080 | CI/CD UI & API |
+| Woodpecker Agent | - | Runs pipeline steps |
+| Cloudflare Tunnel | ci.sadn.site | External access |
+
+---
+
+## Files
+
+| File | Purpose |
+|------|---------|
+| `.woodpecker.yml` | Pipeline definition |
+| `docker-compose.woodpecker.yml` | Woodpecker server + agent |
+| `.env.woodpecker` | GitHub OAuth credentials (gitignored) |
+
+---
+
+## Pipeline Configuration
+
+```yaml
+# .woodpecker.yml
+when:
+  - branch: main
+    event: push
+
+steps:
+  - name: deploy
+    image: alpine/git:latest
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - "D:/IAU/skill forge/Sadn-bank/SADNxAI:/app"
+      - "C:/Users/sei/.ssh:/ssh-keys:ro"
+    commands:
+      - mkdir -p /root/.ssh
+      - cp /ssh-keys/* /root/.ssh/
+      - chmod 600 /root/.ssh/id_ed25519
+      - cd /app
+      - git config --global --add safe.directory /app
+      - git pull origin main
+
+  - name: rebuild
+    image: docker:24-cli
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - "D:/IAU/skill forge/Sadn-bank/SADNxAI:/app"
+    commands:
+      - cd /app
+      - docker compose -p sadnxai down frontend
+      - docker compose -p sadnxai up -d --build frontend
+```
+
+---
+
+## Setup Steps
+
+### 1. GitHub OAuth App
 
 1. Go to https://github.com/settings/developers
-2. Click **"New OAuth App"**
+2. Click **New OAuth App**
 3. Fill in:
-   - **Application name**: `SADNxAI Woodpecker`
-   - **Homepage URL**: `https://ci.sadn.site`
-   - **Authorization callback URL**: `https://ci.sadn.site/authorize`
-4. Click **"Register application"**
-5. Copy the **Client ID**
-6. Click **"Generate a new client secret"** and copy it
+   - **Application name:** `SADNxAI Woodpecker`
+   - **Homepage URL:** `https://ci.sadn.site`
+   - **Authorization callback URL:** `https://ci.sadn.site/authorize`
+4. Save Client ID and Client Secret
 
----
-
-## Step 2: Configure Cloudflare Tunnel
-
-Add a new public hostname in your Cloudflare Tunnel config:
-
-**Option A: Cloudflare Dashboard**
-1. Go to Zero Trust → Networks → Tunnels
-2. Select your tunnel → Public Hostname
-3. Add:
-   - Subdomain: `ci`
-   - Domain: `sadn.site`
-   - Service: `http://localhost:8080`
-
-**Option B: Config file (if using config.yml)**
-```yaml
-ingress:
-  # Existing services...
-  - hostname: sadnxai.sadn.site
-    service: http://localhost:3000
-  - hostname: sadnxaiapi.sadn.site
-    service: http://localhost:8000
-
-  # Add Woodpecker
-  - hostname: ci.sadn.site
-    service: http://localhost:8080
-
-  - service: http_status:404
-```
-
-Restart the tunnel after changes:
-```bash
-cloudflared tunnel run <your-tunnel-name>
-```
-
----
-
-## Step 3: Create Environment File
+### 2. Environment File
 
 ```bash
-cd "/d/IAU/skill forge/Sadn-bank/SADNxAI"
-
-# Generate agent secret
-openssl rand -hex 32
-
-# Create env file
-cp .env.woodpecker.example .env.woodpecker
-```
-
-Edit `.env.woodpecker`:
-```env
+# Create .env.woodpecker
 WOODPECKER_GITHUB_CLIENT=<your_client_id>
 WOODPECKER_GITHUB_SECRET=<your_client_secret>
-WOODPECKER_AGENT_SECRET=<generated_secret>
+WOODPECKER_AGENT_SECRET=$(openssl rand -hex 32)
 ```
+
+### 3. Cloudflare Tunnel
+
+Add to your tunnel config:
+```yaml
+- hostname: ci.sadn.site
+  service: http://localhost:8080
+```
+
+Or via CLI:
+```bash
+cloudflared tunnel route dns <tunnel-name> ci.sadn.site
+```
+
+### 4. Start Woodpecker
+
+```bash
+docker compose -f docker-compose.woodpecker.yml --env-file .env.woodpecker up -d
+```
+
+### 5. Activate Repository
+
+1. Go to https://ci.sadn.site
+2. Login with GitHub
+3. Find `taurusn/SADNxAI`
+4. Click **Activate**
 
 ---
 
-## Step 4: Start Woodpecker
+## Commands
 
 ```bash
-# Start Woodpecker server and agent
+# Start Woodpecker
 docker compose -f docker-compose.woodpecker.yml --env-file .env.woodpecker up -d
 
-# Check logs
+# Stop Woodpecker
+docker compose -f docker-compose.woodpecker.yml down
+
+# View logs
 docker logs woodpecker-server
 docker logs woodpecker-agent
+
+# Restart
+docker compose -f docker-compose.woodpecker.yml --env-file .env.woodpecker restart
 ```
-
----
-
-## Step 5: Activate the Repository
-
-1. Open https://ci.sadn.site
-2. Login with GitHub (authorize the OAuth app)
-3. You'll see your repositories
-4. Find `taurusn/SADNxAI` and click **"Activate"**
-5. Woodpecker will add a webhook to your GitHub repo
-
----
-
-## Step 6: Test the Pipeline
-
-```bash
-# Make a small change and push
-git add .
-git commit -m "test: trigger CI pipeline"
-git push origin main
-```
-
-Check https://ci.sadn.site to see the pipeline run.
-
----
-
-## Pipeline Details
-
-### What runs on every branch:
-| Step | Image | What it does |
-|------|-------|--------------|
-| lint-frontend | node:20-alpine | `npm run lint` |
-| typecheck-frontend | node:20-alpine | `npx tsc --noEmit` |
-| lint-backend | python:3.11-slim | `ruff check` on all services |
-
-### What runs only on main:
-| Step | Image | What it does |
-|------|-------|--------------|
-| deploy | docker:24-cli | `git pull` + `docker compose up -d --build` |
-| notify-success | alpine | Print deployment URLs |
 
 ---
 
 ## Troubleshooting
 
-### Webhook not triggering
-1. Go to GitHub repo → Settings → Webhooks
-2. Check if webhook exists (should point to `https://ci.sadn.site/hook`)
-3. Check "Recent Deliveries" for errors
+### Pipeline not triggering
+- Check webhook in GitHub repo → Settings → Webhooks
+- Ensure webhook points to `https://ci.sadn.site/hook`
+
+### SSH/Git pull fails
+- Verify SSH key is added to GitHub: https://github.com/settings/keys
+- Check SSH key exists: `ls ~/.ssh/id_ed25519`
+
+### Port already allocated
+- Use `-p sadnxai` flag with docker compose to use correct project name
+- Or manually stop conflicting containers
 
 ### Agent not connecting
 ```bash
 docker logs woodpecker-agent
-# Should show: "successfully connected to server"
+# Should show: "starting Woodpecker agent"
 ```
-
-### Pipeline stuck
-```bash
-# Restart agent
-docker restart woodpecker-agent
-```
-
-### Permission denied during deploy
-The agent needs access to Docker socket and project directory. Check volumes in `docker-compose.woodpecker.yml`.
 
 ---
 
-## Files Created
+## Admins
 
-| File | Purpose |
-|------|---------|
-| `docker-compose.woodpecker.yml` | Woodpecker server + agent |
-| `.woodpecker.yml` | Pipeline definition |
-| `.env.woodpecker.example` | Environment template |
-| `.env.woodpecker` | Your actual credentials (gitignored) |
+Current admins (can login and manage repos):
+- `abdullatifaabdullah`
+- `taurusn`
+
+To add more, update `WOODPECKER_ADMIN` in `docker-compose.woodpecker.yml`
+
+---
+
+## URLs
+
+| Service | URL |
+|---------|-----|
+| Woodpecker CI | https://ci.sadn.site |
+| Frontend | https://sadnxai.sadn.site |
+| API | https://sadnxaiapi.sadn.site |
