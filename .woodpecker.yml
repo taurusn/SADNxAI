@@ -11,8 +11,10 @@ steps:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - "D:/IAU/skill forge/Sadn-bank/SADNxAI:/app"
-      - "C:/Users/sei/.ssh:/root/.ssh:ro"
+      - "C:/Users/sei/.ssh:/ssh-keys:ro"
     commands:
+      - mkdir -p /root/.ssh
+      - cp /ssh-keys/* /root/.ssh/
       - chmod 600 /root/.ssh/id_ed25519
       - cd /app
       - git config --global --add safe.directory /app
