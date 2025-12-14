@@ -10,11 +10,14 @@ steps:
     image: docker:24-cli
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - "D:/IAU/skill forge/Sadn-bank/SADNxAI:/host-app"
+      - "D:/IAU/skill forge/Sadn-bank/SADNxAI:/app"
+      - "C:/Users/sei/.ssh:/root/.ssh:ro"
     commands:
-      - apk add --no-cache rsync
-      - rsync -av --delete --exclude='.git' --exclude='node_modules' --exclude='.next' --exclude='storage' /woodpecker/src/github.com/taurusn/SADNxAI/ /host-app/
-      - cd /host-app
+      - apk add --no-cache git openssh
+      - chmod 600 /root/.ssh/id_ed25519
+      - cd /app
+      - git config --global --add safe.directory /app
+      - git pull origin main
       - docker compose down frontend
       - docker compose up -d --build frontend
       - echo "Frontend redeployed!"
