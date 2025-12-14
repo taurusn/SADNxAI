@@ -7,17 +7,25 @@ when:
 
 steps:
   - name: deploy
-    image: docker:24-cli
+    image: alpine/git:latest
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - "D:/IAU/skill forge/Sadn-bank/SADNxAI:/app"
       - "C:/Users/sei/.ssh:/root/.ssh:ro"
     commands:
-      - apk add --no-cache git openssh
       - chmod 600 /root/.ssh/id_ed25519
       - cd /app
       - git config --global --add safe.directory /app
       - git pull origin main
+      - echo "Code updated!"
+
+  - name: rebuild
+    image: docker:24-cli
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - "D:/IAU/skill forge/Sadn-bank/SADNxAI:/app"
+    commands:
+      - cd /app
       - docker compose down frontend
       - docker compose up -d --build frontend
       - echo "Frontend redeployed!"
