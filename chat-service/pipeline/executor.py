@@ -5,8 +5,10 @@ Orchestrates masking and validation services
 
 import os
 import uuid
+import asyncio
 import httpx
 from typing import Dict, Any
+from uuid import UUID
 
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -56,7 +58,8 @@ class PipelineExecutor:
                 - validation_result: Validation metrics
                 - report_path: Path to PDF report (if validation passed)
         """
-        job_id = str(uuid.uuid4())
+        # Use session.id as job_id to maintain consistency with PostgreSQL data
+        job_id = session.id
         salt = str(uuid.uuid4())  # Generate unique salt for this job
 
         result = {
@@ -68,6 +71,9 @@ class PipelineExecutor:
         }
 
         try:
+            # Update job status to masking
+            await self._update_job_status(job_id, "masking")
+
             # Step 1: Masking
             masking_result = await self._call_masking_service(
                 job_id=job_id,
@@ -81,6 +87,9 @@ class PipelineExecutor:
                 return result
 
             result["masked_path"] = masking_result["output_path"]
+
+            # Update job status to validating
+            await self._update_job_status(job_id, "validating")
 
             # Step 2: Validation
             validation_result = await self._call_validation_service(
@@ -107,6 +116,9 @@ class PipelineExecutor:
                 ]
             )
 
+            # Step 2.5: Save validation results to PostgreSQL
+            await self._save_validation_to_db(job_id, validation_result)
+
             # Step 3: Generate report (always, regardless of pass/fail)
             report_result = await self._call_report_service(
                 job_id=job_id,
@@ -126,10 +138,50 @@ class PipelineExecutor:
             )
             result["output_path"] = output_path
 
+            # Update final job status
+            final_status = "completed" if validation_result["passed"] else "failed"
+            await self._update_job_status(job_id, final_status, masked_path=output_path)
+
         except Exception as e:
             result["error"] = str(e)
+            await self._update_job_status(job_id, "failed")
 
         return result
+
+    async def _update_job_status(self, job_id: str, status: str, **kwargs) -> None:
+        """Update job status in PostgreSQL"""
+        try:
+            from shared.database import Database
+
+            await Database.update_job(UUID(job_id), status=status, **kwargs)
+        except Exception as e:
+            # Log but don't fail pipeline if DB update fails
+            print(f"Warning: Failed to update job status in DB: {e}")
+
+    async def _save_validation_to_db(self, job_id: str, validation_result: Dict[str, Any]) -> None:
+        """Save validation results to PostgreSQL"""
+        try:
+            from shared.database import Database
+
+            # Transform metrics to DB format
+            db_results = []
+            metrics = validation_result.get("metrics", {})
+
+            for metric_id, metric_data in metrics.items():
+                db_results.append({
+                    "validation_id": metric_id,
+                    "value": metric_data.get("value", 0),
+                    "threshold_used": metric_data.get("threshold"),
+                    "passed": metric_data.get("passed", False),
+                    "details": None
+                })
+
+            if db_results:
+                await Database.save_validation_results(UUID(job_id), db_results)
+
+        except Exception as e:
+            # Log but don't fail pipeline if DB save fails
+            print(f"Warning: Failed to save validation results to DB: {e}")
 
     async def _call_masking_service(
         self,
