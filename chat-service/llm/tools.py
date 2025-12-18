@@ -4,7 +4,8 @@ Handles execution of LLM tool calls
 """
 
 import os
-from typing import Dict, Any, Callable
+import asyncio
+from typing import Dict, Any, Callable, Optional
 
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -51,6 +52,7 @@ class ToolExecutor:
             "classify_columns": self._handle_classify_columns,
             "execute_pipeline": self._handle_execute_pipeline,
             "update_thresholds": self._handle_update_thresholds,
+            "query_regulations": self._handle_query_regulations,
         }
 
         handler = handlers.get(tool_name)
@@ -231,3 +233,68 @@ class ToolExecutor:
                 "risk_score": {"minimum": current.risk_score.minimum, "target": current.risk_score.target}
             }
         }
+
+    def _handle_query_regulations(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Handle query_regulations tool call.
+
+        Queries the regulation database and returns relevant PDPL/SAMA articles.
+        """
+        from shared.database import Database
+
+        query_type = args.get("query_type", "")
+        value = args.get("value", "")
+
+        if not query_type or not value:
+            return {
+                "success": False,
+                "error": "Both query_type and value are required"
+            }
+
+        async def _query():
+            try:
+                if query_type == "technique":
+                    results = await Database.query_regulations_by_technique(value)
+                elif query_type == "classification_type":
+                    results = await Database.query_regulations_by_classification_type(value)
+                elif query_type == "search":
+                    results = await Database.search_regulations(value)
+                elif query_type == "by_ids":
+                    ids = [id.strip() for id in value.split(",")]
+                    results = await Database.query_regulations_by_ids(ids)
+                elif query_type == "pattern":
+                    result = await Database.detect_saudi_pattern(value)
+                    results = [result] if result else []
+                else:
+                    return {
+                        "success": False,
+                        "error": f"Unknown query_type: {query_type}. Valid types: technique, classification_type, search, by_ids, pattern"
+                    }
+
+                return {
+                    "success": True,
+                    "query_type": query_type,
+                    "value": value,
+                    "regulations": results,
+                    "count": len(results)
+                }
+            except Exception as e:
+                return {
+                    "success": False,
+                    "error": f"Database query failed: {str(e)}"
+                }
+
+        # Run async query in sync context
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # If already in async context, create a new task
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(asyncio.run, _query())
+                    return future.result()
+            else:
+                return loop.run_until_complete(_query())
+        except RuntimeError:
+            # No event loop, create one
+            return asyncio.run(_query())

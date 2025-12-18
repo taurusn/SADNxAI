@@ -26,6 +26,7 @@ services:
       - OLLAMA_URL=http://ollama:11434
       - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5:14b}
       - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=postgresql://sadnxai:${POSTGRES_PASSWORD:-sadnxai_secure_pass}@postgres:5432/sadnxai
       - MASKING_SERVICE_URL=http://masking-service:8001
       - VALIDATION_SERVICE_URL=http://validation-service:8002
       - STORAGE_PATH=/storage
@@ -33,10 +34,16 @@ services:
     volumes:
       - storage:/storage
     depends_on:
-      - redis
-      - masking-service
-      - validation-service
-      - ollama
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      masking-service:
+        condition: service_started
+      validation-service:
+        condition: service_started
+      ollama:
+        condition: service_started
 
   masking-service:
     build:
@@ -57,8 +64,12 @@ services:
       - "8002:8002"
     environment:
       - STORAGE_PATH=/storage
+      - DATABASE_URL=postgresql://sadnxai:${POSTGRES_PASSWORD:-sadnxai_secure_pass}@postgres:5432/sadnxai
     volumes:
       - storage:/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   redis:
     image: redis:7-alpine
@@ -67,6 +78,28 @@ services:
     volumes:
       - redis-data:/data
     command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  postgres:
+    image: postgres:15-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=sadnxai
+      - POSTGRES_USER=sadnxai
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-sadnxai_secure_pass}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sadnxai -d sadnxai"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   ollama:
     image: ollama/ollama
@@ -85,4 +118,5 @@ services:
 volumes:
   storage:
   redis-data:
+  postgres-data:
   ollama-data:

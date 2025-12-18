@@ -9,6 +9,7 @@ import httpx
 from typing import List, Dict, Any, Optional
 
 from shared.openai_schema import get_system_prompt, get_tools
+from shared.prompts import get_prompt_for_state
 
 
 class OllamaAdapter:
@@ -194,51 +195,38 @@ class OllamaAdapter:
         }
 
     def _build_system_prompt(self, session_context: Optional[Dict[str, Any]] = None) -> str:
-        """Build system prompt with session context and tool instructions"""
-        prompt = self.system_prompt
+        """Build system prompt with session context using state-based templates"""
+        # Get status from context or default to idle
+        status = "idle"
+        if session_context and session_context.get("status"):
+            status = session_context["status"]
 
-        # Add compact tool calling instructions
-        prompt += """
+        # Get state-based prompt (optimized for each state)
+        prompt = get_prompt_for_state(status)
 
-## TOOL FORMAT (REQUIRED - NOT OPTIONAL)
-You MUST output tool calls in this exact format:
-```tool_call
-{"tool": "tool_name", "arguments": {...}}
-```
-
-MANDATORY TOOL CALLS:
-1. After analyzing uploaded file → MUST call `classify_columns` with all fields
-2. After user says "approve/yes/proceed" → MUST call `execute_pipeline` with {"confirmed": true}
-
-Text descriptions WITHOUT tool calls will NOT work. The system ONLY processes tool calls.
-"""
-
-        # Add session context if available
+        # Add dynamic context based on state
         if session_context:
-            if session_context.get("file_info"):
+            # Add file info for ANALYZING state
+            if status.lower() in ["analyzing", "idle"] and session_context.get("file_info"):
                 fi = session_context["file_info"]
                 prompt += f"\n\n## CURRENT FILE: {fi.get('filename', '?')} ({fi.get('row_count', '?')} rows)\n"
                 columns = fi.get('columns', [])
                 prompt += f"Columns: {', '.join(columns)}\n"
 
-                # Format sample data as markdown table (more compact than JSON)
+                # Format sample data as markdown table (compact)
                 sample_data = fi.get("sample_data")
                 if sample_data and isinstance(sample_data, list) and len(sample_data) > 0:
                     prompt += "\n### Sample Data:\n"
-                    # Build header
                     if isinstance(sample_data[0], dict):
                         headers = list(sample_data[0].keys())
                         prompt += "| " + " | ".join(headers) + " |\n"
                         prompt += "| " + " | ".join(["---"] * len(headers)) + " |\n"
-                        # Build rows (limit to 5)
                         for row in sample_data[:5]:
-                            values = [str(row.get(h, ""))[:30] for h in headers]  # Truncate long values
+                            values = [str(row.get(h, ""))[:30] for h in headers]
                             prompt += "| " + " | ".join(values) + " |\n"
-                    else:
-                        # Fallback for other formats
-                        prompt += f"```\n{sample_data}\n```\n"
 
-            if session_context.get("classification"):
+            # Add classification for PROPOSED/DISCUSSING states
+            if status.lower() in ["proposed", "discussing"] and session_context.get("classification"):
                 cls = session_context['classification']
                 prompt += "\n## CURRENT CLASSIFICATION:\n"
                 prompt += f"- Direct IDs (SUPPRESS): {cls.get('direct_identifiers', [])}\n"
@@ -247,12 +235,35 @@ Text descriptions WITHOUT tool calls will NOT work. The system ONLY processes to
                 prompt += f"- Dates (DATE_SHIFT): {cls.get('date_columns', [])}\n"
                 prompt += f"- Sensitive (KEEP): {cls.get('sensitive_attributes', [])}\n"
 
-            prompt += f"\nStatus: {session_context.get('status', 'unknown')}\n"
+            # Add validation results for FAILED state
+            if status.lower() == "failed" and session_context.get("validation_result"):
+                vr = session_context["validation_result"]
+                prompt += "\n## VALIDATION RESULTS (FAILED):\n"
+                if isinstance(vr, dict):
+                    for metric, data in vr.items():
+                        if isinstance(data, dict):
+                            prompt += f"- {metric}: {data.get('value', '?')} (threshold: {data.get('threshold', '?')}, passed: {data.get('passed', '?')})\n"
+
+            # Add validation results for COMPLETED state
+            if status.lower() == "completed" and session_context.get("validation_result"):
+                vr = session_context["validation_result"]
+                prompt += "\n## VALIDATION RESULTS (PASSED):\n"
+                if isinstance(vr, dict):
+                    for metric, data in vr.items():
+                        if isinstance(data, dict):
+                            prompt += f"- {metric}: {data.get('value', '?')} (threshold: {data.get('threshold', '?')})\n"
 
         return prompt
 
     # Valid tools and their required fields
     VALID_TOOLS = {
+        "query_regulations": {
+            "required": ["query_type", "value"],
+            "types": {
+                "query_type": str,
+                "value": str
+            }
+        },
         "classify_columns": {
             "required": ["direct_identifiers", "quasi_identifiers", "linkage_identifiers",
                         "date_columns", "sensitive_attributes", "recommended_techniques", "reasoning"],

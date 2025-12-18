@@ -11,6 +11,28 @@ TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "query_regulations",
+            "description": "Query the regulation database to find relevant PDPL/SAMA articles for justifying anonymization decisions. Use this BEFORE classifying columns to get accurate regulatory citations.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query_type": {
+                        "type": "string",
+                        "enum": ["technique", "classification_type", "search", "by_ids", "pattern"],
+                        "description": "Type of query: 'technique' (SUPPRESS/GENERALIZE/etc), 'classification_type' (direct_identifier/quasi_identifier/etc), 'search' (free text search), 'by_ids' (specific regulation IDs), 'pattern' (detect Saudi data pattern in column name)"
+                    },
+                    "value": {
+                        "type": "string",
+                        "description": "Query value: technique name, classification type, search keywords, comma-separated regulation IDs, or column name for pattern detection"
+                    }
+                },
+                "required": ["query_type", "value"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "classify_columns",
             "description": "Formalize the column classification after discussing with the user. Call this to record the agreed-upon classification of columns into privacy categories.",
             "parameters": {

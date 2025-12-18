@@ -1038,3 +1038,42 @@ async def generate_report(self, job_id: UUID) -> str:
 | Prompts | Monolithic (~2,800 tokens) | State-based (400-1,200 tokens) |
 | LLM Regulation Access | None (static prompt) | query_regulations tool |
 | PDF Report | Hardcoded mappings | Query from DB with justifications |
+
+---
+
+## Implementation Progress
+
+### Completed
+
+- [x] **Phase 1: Database Setup**
+  - [x] Created `db/init/001_schema.sql` with normalized schema
+  - [x] Created `db/init/002_seed_data.sql` with lookup data
+  - [x] Updated `docker-compose.yml` with PostgreSQL service
+  - [x] Created `shared/database.py` access layer
+  - [x] Added `asyncpg` to requirements.txt files
+
+- [x] **Phase 4: query_regulations Tool**
+  - [x] Added tool schema to `shared/openai_schema.py`
+  - [x] Implemented handler in `chat-service/llm/tools.py`
+  - [x] Added to VALID_TOOLS in `ollama_adapter.py`
+
+- [x] **Phase 6: State-Based Prompts**
+  - [x] Created `shared/prompts/` directory
+  - [x] Implemented state-based templates (idle, analyzing, proposed, approved, completed, failed)
+  - [x] Updated `ollama_adapter.py` to use state-based prompts
+
+### In Progress
+
+- [ ] **Phase 5: Updated classify_columns Tool**
+  - [ ] Update tool schema for new format with regulation_refs
+  - [ ] Update handler to save to PostgreSQL
+
+### Pending
+
+- [ ] **Phase 7: PDF Report Integration**
+  - [ ] Update report generator to query PostgreSQL
+  - [ ] Add regulatory justifications section
+
+- [ ] **Testing**
+  - [ ] Test database setup and queries
+  - [ ] End-to-end integration testing
