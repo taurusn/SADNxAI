@@ -18,7 +18,8 @@ steps:
       - chmod 600 /root/.ssh/id_ed25519
       - cd /app
       - git config --global --add safe.directory /app
-      - git pull origin main
+      - git fetch origin main
+      - git reset --hard origin/main
       - echo "Code updated!"
 
   - name: rebuild
