@@ -1,5 +1,5 @@
 """
-SADNxBANK - Saudi Regulatory Mappings
+SADNxAI - Saudi Regulatory Mappings
 PDPL, SAMA Open Banking, and NDMO compliance references
 """
 

@@ -53,7 +53,7 @@ export default function Sidebar() {
       <div className="p-4 border-b border-sidebar-border">
         <div className="flex items-center gap-2 mb-4">
           <Shield className="w-8 h-8 text-primary" />
-          <span className="text-xl font-bold">SADNxbank</span>
+          <span className="text-xl font-bold">SADNxAI</span>
         </div>
 
         <button
@@ -119,7 +119,7 @@ export default function Sidebar() {
 
       {/* Footer */}
       <div className="p-4 border-t border-sidebar-border text-xs text-gray-500">
-        <div>SADNxbank v1.0.0</div>
+        <div>SADNxAI v1.0.0</div>
         <div>AI-Powered Data Anonymization</div>
       </div>
     </aside>

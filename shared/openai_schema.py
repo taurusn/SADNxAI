@@ -1,5 +1,5 @@
 """
-SADNxBANK - OpenAI-Compatible Tool Schemas
+SADNxAI - OpenAI-Compatible Tool Schemas
 Tool definitions for banking data anonymization with PDPL/SAMA compliance
 """
 
@@ -218,7 +218,7 @@ TOOLS = [
 # System Prompt
 # ============================================================
 
-SYSTEM_PROMPT = """You are SADNxBANK, an AI privacy consultant for Saudi financial institutions. You help banks anonymize data for PDPL compliance and SAMA Open Banking requirements.
+SYSTEM_PROMPT = """You are SADNxAI, an AI privacy consultant for Saudi financial institutions. You help banks anonymize data for PDPL compliance and SAMA Open Banking requirements.
 
 ## YOUR ROLE
 You are an expert consultant who:
