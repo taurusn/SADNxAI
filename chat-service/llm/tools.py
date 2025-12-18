@@ -68,7 +68,7 @@ class ToolExecutor:
         """
         Handle classify_columns tool call.
 
-        Records the AI's classification decision.
+        Records the AI's classification decision and saves to PostgreSQL.
         """
         # Build generalization config
         gen_config_args = args.get("generalization_config", {})
@@ -101,6 +101,45 @@ class ToolExecutor:
         # Update session
         self.session.classification = classification
 
+        # Extract regulation references (new field)
+        regulation_refs = args.get("regulation_refs", {})
+        reasoning = args.get("reasoning", {})
+
+        # Build classifications list for PostgreSQL
+        # Map classification categories to type IDs
+        db_classifications = []
+        category_mappings = [
+            ("direct_identifiers", "direct_identifier", 0),
+            ("quasi_identifiers", "quasi_identifier", gen_config.age_level),  # Use age_level as default
+            ("linkage_identifiers", "linkage_identifier", 0),
+            ("date_columns", "date_column", gen_config.date_level),
+            ("sensitive_attributes", "sensitive_attribute", 0),
+        ]
+
+        for category, type_id, default_gen_level in category_mappings:
+            columns = args.get(category, [])
+            for col in columns:
+                # Determine generalization level based on column type
+                gen_level = default_gen_level
+                if category == "quasi_identifiers":
+                    # Check if it's a location column
+                    col_lower = col.lower()
+                    if any(loc in col_lower for loc in ["city", "region", "province", "location", "address"]):
+                        gen_level = gen_config.location_level
+
+                db_classifications.append({
+                    "column_name": col,
+                    "classification_type_id": type_id,
+                    "reasoning": reasoning.get(col, ""),
+                    "generalization_level": gen_level,
+                    "regulation_refs": regulation_refs.get(col, [])
+                })
+
+        # Save to PostgreSQL (async in sync context)
+        db_save_result = None
+        if db_classifications:
+            db_save_result = self._save_classifications_to_db(db_classifications)
+
         # Count classified columns
         total_classified = (
             len(classification.direct_identifiers) +
@@ -110,7 +149,7 @@ class ToolExecutor:
             len(classification.sensitive_attributes)
         )
 
-        return {
+        result = {
             "success": True,
             "message": f"Classification recorded for {total_classified} columns",
             "classification": {
@@ -121,6 +160,52 @@ class ToolExecutor:
                 "sensitive_attributes": classification.sensitive_attributes
             }
         }
+
+        if db_save_result:
+            result["db_saved"] = db_save_result.get("success", False)
+            if not db_save_result.get("success"):
+                result["db_error"] = db_save_result.get("error")
+
+        return result
+
+    def _save_classifications_to_db(self, classifications: list) -> Dict[str, Any]:
+        """Save classifications to PostgreSQL database"""
+        from shared.database import Database
+        from uuid import UUID
+
+        async def _save():
+            try:
+                job_id = UUID(self.session.id)
+                # Ensure job exists
+                job = await Database.get_job(job_id)
+                if not job:
+                    await Database.create_job(job_id, self.session.title)
+
+                # Save classifications
+                saved = await Database.save_classifications(job_id, classifications)
+                return {
+                    "success": True,
+                    "saved_count": len(saved)
+                }
+            except Exception as e:
+                print(f"Failed to save classifications to DB: {e}")
+                return {
+                    "success": False,
+                    "error": str(e)
+                }
+
+        # Run async query in sync context
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(asyncio.run, _save())
+                    return future.result()
+            else:
+                return loop.run_until_complete(_save())
+        except RuntimeError:
+            return asyncio.run(_save())
 
     def _handle_execute_pipeline(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """

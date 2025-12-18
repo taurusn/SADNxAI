@@ -5,8 +5,10 @@ Generates professional privacy reports with PDPL/SAMA regulatory citations
 
 import os
 import sys
+import asyncio
 from datetime import datetime
-from typing import Dict, Any
+from typing import Dict, Any, List, Optional
+from uuid import UUID
 
 # Add parent for shared module
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -29,6 +31,35 @@ WARNING_COLOR = colors.HexColor("#F59E0B")
 ERROR_COLOR = colors.HexColor("#EF4444")
 LIGHT_GRAY = colors.HexColor("#F3F4F6")
 DARK_GRAY = colors.HexColor("#374151")
+
+
+def _fetch_db_classifications(job_id: str) -> Optional[List[Dict[str, Any]]]:
+    """Fetch classifications from PostgreSQL database"""
+    try:
+        from shared.database import Database
+
+        async def _fetch():
+            try:
+                return await Database.get_classifications(UUID(job_id))
+            except Exception as e:
+                print(f"Failed to fetch classifications from DB: {e}")
+                return None
+
+        # Run async query in sync context
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(asyncio.run, _fetch())
+                    return future.result()
+            else:
+                return loop.run_until_complete(_fetch())
+        except RuntimeError:
+            return asyncio.run(_fetch())
+    except Exception as e:
+        print(f"Error fetching DB classifications: {e}")
+        return None
 
 
 def generate_pdf_report(
@@ -174,29 +205,32 @@ def generate_pdf_report(
     # Classification Summary
     content.append(Paragraph("Classification Summary", styles['SectionHeader']))
 
-    classification = session.get('classification', {})
-    if classification:
-        class_data = [["Column", "Type", "Technique", "Regulation"]]
+    # Try to fetch classifications from PostgreSQL first
+    db_classifications = _fetch_db_classifications(job_id)
 
-        # Add direct identifiers
-        for col in classification.get('direct_identifiers', []):
-            class_data.append([col, "Direct Identifier", "Suppressed", "PDPL Art.11,15"])
+    if db_classifications:
+        # Use DB classifications with regulation references
+        class_data = [["Column", "Type", "Technique", "Regulations"]]
 
-        # Add quasi identifiers
-        for col in classification.get('quasi_identifiers', []):
-            class_data.append([col, "Quasi-Identifier", "Generalized", "PDPL Art.11,17"])
+        for cls in db_classifications:
+            col_name = cls.get('column_name', 'Unknown')
+            cls_name = cls.get('classification_name', 'Unknown')
+            tech_name = cls.get('technique_name', 'Unknown')
 
-        # Add linkage identifiers
-        for col in classification.get('linkage_identifiers', []):
-            class_data.append([col, "Linkage Identifier", "Pseudonymized", "PDPL Art.19"])
+            # Build regulation string from DB
+            reg_refs = cls.get('regulation_refs', [])
+            if reg_refs and isinstance(reg_refs, list):
+                reg_strs = []
+                for ref in reg_refs:
+                    if isinstance(ref, dict) and ref.get('regulation_id'):
+                        reg_strs.append(ref.get('regulation_id', ''))
+                reg_string = ', '.join(reg_strs[:3])  # Limit to 3 for space
+                if len(reg_strs) > 3:
+                    reg_string += f" (+{len(reg_strs)-3})"
+            else:
+                reg_string = "-"
 
-        # Add date columns
-        for col in classification.get('date_columns', []):
-            class_data.append([col, "Date Column", "Date Shifted", "PDPL Art.11"])
-
-        # Add sensitive attributes
-        for col in classification.get('sensitive_attributes', []):
-            class_data.append([col, "Sensitive Attribute", "Kept", "PDPL Art.5,24"])
+            class_data.append([col_name, cls_name, tech_name, reg_string])
 
         if len(class_data) > 1:
             class_table = Table(class_data, colWidths=[4*cm, 3.5*cm, 3*cm, 3*cm])
@@ -212,8 +246,71 @@ def generate_pdf_report(
                 ('TOPPADDING', (0, 0), (-1, -1), 8),
             ]))
             content.append(class_table)
+
+        # Add detailed justifications section
+        content.append(Spacer(1, 15))
+        content.append(Paragraph("Column Justifications", styles['SectionHeader']))
+
+        for cls in db_classifications:
+            col_name = cls.get('column_name', 'Unknown')
+            reasoning = cls.get('reasoning', '')
+            reg_refs = cls.get('regulation_refs', [])
+
+            if reasoning or (reg_refs and isinstance(reg_refs, list) and len(reg_refs) > 0):
+                content.append(Paragraph(f"<b>{col_name}</b>", styles['ReportBody']))
+                if reasoning:
+                    content.append(Paragraph(f"&nbsp;&nbsp;&nbsp;{reasoning}", styles['ReportBody']))
+                if reg_refs and isinstance(reg_refs, list):
+                    for ref in reg_refs:
+                        if isinstance(ref, dict):
+                            ref_text = f"&nbsp;&nbsp;&nbsp;• {ref.get('source', '')} {ref.get('article_number', '')}"
+                            if ref.get('title'):
+                                ref_text += f": {ref.get('title', '')}"
+                            if ref.get('relevance'):
+                                ref_text += f" - {ref.get('relevance', '')}"
+                            content.append(Paragraph(ref_text, styles['ReportBody']))
     else:
-        content.append(Paragraph("No classification data available.", styles['ReportBody']))
+        # Fallback to session classification (backwards compatible)
+        classification = session.get('classification', {})
+        if classification:
+            class_data = [["Column", "Type", "Technique", "Regulation"]]
+
+            # Add direct identifiers
+            for col in classification.get('direct_identifiers', []):
+                class_data.append([col, "Direct Identifier", "Suppressed", "PDPL Art.11,15"])
+
+            # Add quasi identifiers
+            for col in classification.get('quasi_identifiers', []):
+                class_data.append([col, "Quasi-Identifier", "Generalized", "PDPL Art.11,17"])
+
+            # Add linkage identifiers
+            for col in classification.get('linkage_identifiers', []):
+                class_data.append([col, "Linkage Identifier", "Pseudonymized", "PDPL Art.19"])
+
+            # Add date columns
+            for col in classification.get('date_columns', []):
+                class_data.append([col, "Date Column", "Date Shifted", "PDPL Art.11"])
+
+            # Add sensitive attributes
+            for col in classification.get('sensitive_attributes', []):
+                class_data.append([col, "Sensitive Attribute", "Kept", "PDPL Art.5,24"])
+
+            if len(class_data) > 1:
+                class_table = Table(class_data, colWidths=[4*cm, 3.5*cm, 3*cm, 3*cm])
+                class_table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), PRIMARY_COLOR),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, -1), 9),
+                    ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                    ('GRID', (0, 0), (-1, -1), 0.5, LIGHT_GRAY),
+                    ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, LIGHT_GRAY]),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+                    ('TOPPADDING', (0, 0), (-1, -1), 8),
+                ]))
+                content.append(class_table)
+        else:
+            content.append(Paragraph("No classification data available.", styles['ReportBody']))
 
     content.append(Spacer(1, 20))
 
