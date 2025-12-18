@@ -1057,23 +1057,27 @@ async def generate_report(self, job_id: UUID) -> str:
   - [x] Implemented handler in `chat-service/llm/tools.py`
   - [x] Added to VALID_TOOLS in `ollama_adapter.py`
 
+- [x] **Phase 5: Updated classify_columns Tool**
+  - [x] Added `regulation_refs` field to tool schema in `shared/openai_schema.py`
+  - [x] Updated handler to save classifications to PostgreSQL with regulation references
+  - [x] Auto-creates job if not exists
+  - [x] Maps classification categories to normalized type IDs
+
 - [x] **Phase 6: State-Based Prompts**
   - [x] Created `shared/prompts/` directory
   - [x] Implemented state-based templates (idle, analyzing, proposed, approved, completed, failed)
   - [x] Updated `ollama_adapter.py` to use state-based prompts
 
-### In Progress
-
-- [ ] **Phase 5: Updated classify_columns Tool**
-  - [ ] Update tool schema for new format with regulation_refs
-  - [ ] Update handler to save to PostgreSQL
+- [x] **Phase 7: PDF Report Integration**
+  - [x] Updated report generator to fetch classifications from PostgreSQL
+  - [x] Added "Column Justifications" section with per-column reasoning
+  - [x] Displays regulation references with source, article, title, and relevance
+  - [x] Backwards compatible fallback to session data
 
 ### Pending
-
-- [ ] **Phase 7: PDF Report Integration**
-  - [ ] Update report generator to query PostgreSQL
-  - [ ] Add regulatory justifications section
 
 - [ ] **Testing**
   - [ ] Test database setup and queries
   - [ ] End-to-end integration testing
+  - [ ] Verify LLM cites regulations correctly
+  - [ ] Check PDF report quality
