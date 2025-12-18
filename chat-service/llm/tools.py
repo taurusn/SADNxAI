@@ -193,19 +193,13 @@ class ToolExecutor:
                     "success": False,
                     "error": str(e)
                 }
+            finally:
+                # Close pool to avoid connection leaks in thread context
+                await Database.close()
 
-        # Run async query in sync context
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                import concurrent.futures
-                with concurrent.futures.ThreadPoolExecutor() as executor:
-                    future = executor.submit(asyncio.run, _save())
-                    return future.result()
-            else:
-                return loop.run_until_complete(_save())
-        except RuntimeError:
-            return asyncio.run(_save())
+        # Run async query in a fresh event loop
+        # This avoids conflicts with the main event loop
+        return asyncio.run(_save())
 
     def _handle_execute_pipeline(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -368,18 +362,10 @@ class ToolExecutor:
                     "success": False,
                     "error": f"Database query failed: {str(e)}"
                 }
+            finally:
+                # Close pool to avoid connection leaks in thread context
+                await Database.close()
 
-        # Run async query in sync context
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # If already in async context, create a new task
-                import concurrent.futures
-                with concurrent.futures.ThreadPoolExecutor() as executor:
-                    future = executor.submit(asyncio.run, _query())
-                    return future.result()
-            else:
-                return loop.run_until_complete(_query())
-        except RuntimeError:
-            # No event loop, create one
-            return asyncio.run(_query())
+        # Run async query in a fresh event loop
+        # This avoids conflicts with the main event loop
+        return asyncio.run(_query())

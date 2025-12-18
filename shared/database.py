@@ -246,36 +246,39 @@ class Database:
         """
         pool = await cls.get_pool()
 
-        # Delete existing classifications for this job
-        await pool.execute(
-            "DELETE FROM classifications_on_jobs WHERE job_id = $1",
-            job_id
-        )
+        # Use a single connection with transaction for all operations
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                # Delete existing classifications for this job
+                await conn.execute(
+                    "DELETE FROM classifications_on_jobs WHERE job_id = $1",
+                    job_id
+                )
 
-        results = []
-        for c in classifications:
-            # Insert classification
-            row = await pool.fetchrow("""
-                INSERT INTO classifications_on_jobs
-                (job_id, column_name, classification_type_id, reasoning, generalization_level)
-                VALUES ($1, $2, $3, $4, $5)
-                RETURNING *
-            """, job_id, c['column_name'], c['classification_type_id'],
-                c.get('reasoning'), c.get('generalization_level', 0))
+                results = []
+                for c in classifications:
+                    # Insert classification
+                    row = await conn.fetchrow("""
+                        INSERT INTO classifications_on_jobs
+                        (job_id, column_name, classification_type_id, reasoning, generalization_level)
+                        VALUES ($1, $2, $3, $4, $5)
+                        RETURNING *
+                    """, job_id, c['column_name'], c['classification_type_id'],
+                        c.get('reasoning'), c.get('generalization_level', 0))
 
-            classification_id = row['id']
+                    classification_id = row['id']
 
-            # Save regulation references
-            for reg in c.get('regulation_refs', []):
-                await pool.execute("""
-                    INSERT INTO classification_regulations
-                    (classification_on_job_id, regulation_id, relevance)
-                    VALUES ($1, $2, $3)
-                    ON CONFLICT (classification_on_job_id, regulation_id) DO UPDATE
-                    SET relevance = EXCLUDED.relevance
-                """, classification_id, reg['regulation_id'], reg.get('relevance'))
+                    # Save regulation references
+                    for reg in c.get('regulation_refs', []):
+                        await conn.execute("""
+                            INSERT INTO classification_regulations
+                            (classification_on_job_id, regulation_id, relevance)
+                            VALUES ($1, $2, $3)
+                            ON CONFLICT (classification_on_job_id, regulation_id) DO UPDATE
+                            SET relevance = EXCLUDED.relevance
+                        """, classification_id, reg['regulation_id'], reg.get('relevance'))
 
-            results.append(dict(row))
+                    results.append(dict(row))
 
         return results
 
