@@ -1074,6 +1074,12 @@ async def generate_report(self, job_id: UUID) -> str:
   - [x] Displays regulation references with source, article, title, and relevance
   - [x] Backwards compatible fallback to session data
 
+- [x] **Phase 8: Pipeline Integration**
+  - [x] Pipeline executor uses `session.id` as `job_id` for consistency
+  - [x] Validation results saved to PostgreSQL via `save_validation_results`
+  - [x] Job status updates during pipeline: masking → validating → completed/failed
+  - [x] Classifications and report now correctly linked via same job_id
+
 ### Pending
 
 - [ ] **Testing**
