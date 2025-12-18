@@ -74,7 +74,28 @@ TOOLS = [
                     "reasoning": {
                         "type": "object",
                         "additionalProperties": {"type": "string"},
-                        "description": "Explanation for why each column was classified this way."
+                        "description": "Explanation for why each column was classified this way. Include regulation citations (e.g., 'PDPL Art.11 - data minimization')."
+                    },
+                    "regulation_refs": {
+                        "type": "object",
+                        "additionalProperties": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "regulation_id": {
+                                        "type": "string",
+                                        "description": "Regulation ID (e.g., 'PDPL-Art-11', 'SAMA-2.6.2')"
+                                    },
+                                    "relevance": {
+                                        "type": "string",
+                                        "description": "Why this regulation applies to this column"
+                                    }
+                                },
+                                "required": ["regulation_id", "relevance"]
+                            }
+                        },
+                        "description": "Per-column regulation references. Key is column name, value is array of {regulation_id, relevance}."
                     },
                     "generalization_config": {
                         "type": "object",
