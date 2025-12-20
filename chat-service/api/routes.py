@@ -34,6 +34,155 @@ session_manager = SessionManager()
 llm_adapter = LLMAdapter(mock_mode=os.getenv("LLM_MOCK_MODE", "false").lower() == "true")
 pipeline_executor = PipelineExecutor()
 
+# Maximum iterations for agentic loop (safety limit)
+MAX_AGENTIC_ITERATIONS = 10
+
+
+async def _run_agentic_loop(
+    session: Session,
+    messages: List[Dict[str, Any]],
+    session_context: Dict[str, Any],
+    tool_executor: "ToolExecutor",
+    terminal_tools: Optional[List[str]] = None
+) -> Dict[str, Any]:
+    """
+    Run the agentic loop: call LLM, execute tools, repeat until no more tool calls.
+
+    This implements the standard agentic pattern:
+    1. Call LLM with current messages
+    2. If LLM returns tool_calls, execute them and add results to messages
+    3. Call LLM again with updated messages (including tool results)
+    4. Repeat until LLM returns no tool_calls OR a terminal tool is called
+    5. Return final response
+
+    Args:
+        session: Current session object
+        messages: List of messages for LLM (will be modified in place)
+        session_context: Context dict for LLM
+        tool_executor: ToolExecutor instance
+        terminal_tools: Optional list of tool names that should stop the loop
+                       (e.g., ["execute_pipeline"] - handled separately)
+
+    Returns:
+        Dict with:
+        - content: Final response text from LLM
+        - classification_updated: Classification if classify_columns was called
+        - iterations: Number of loop iterations
+        - terminal_tool: Name of terminal tool that was called (if any)
+        - terminal_tool_result: Result from terminal tool (if any)
+    """
+    terminal_tools = terminal_tools or []
+    classification_updated = None
+    terminal_tool_called = None
+    terminal_tool_result = None
+    iteration = 0
+    final_content = ""
+
+    while iteration < MAX_AGENTIC_ITERATIONS:
+        iteration += 1
+        print(f"[Agentic Loop] Iteration {iteration}")
+
+        # Call LLM
+        llm_response = await llm_adapter.chat_async(messages, session_context)
+        content = llm_response.get("content", "")
+        tool_calls_raw = llm_response.get("tool_calls")
+
+        # If no tool calls, we're done - this is the final response
+        if not tool_calls_raw:
+            print(f"[Agentic Loop] No tool calls, returning final response")
+            # Add final assistant message to session
+            final_msg = Message(role=MessageRole.ASSISTANT, content=content)
+            session.messages.append(final_msg)
+            final_content = content
+            break
+
+        print(f"[Agentic Loop] Processing {len(tool_calls_raw)} tool call(s)")
+
+        # Build ToolCall objects
+        tool_calls = []
+        for tc in tool_calls_raw:
+            tool_calls.append(ToolCall(
+                id=tc["id"],
+                type=tc["type"],
+                function=tc["function"]
+            ))
+
+        # Add assistant message WITH tool calls to session FIRST (correct order)
+        assistant_msg = Message(
+            role=MessageRole.ASSISTANT,
+            content=content,
+            tool_calls=tool_calls
+        )
+        session.messages.append(assistant_msg)
+
+        # Also add to messages list for next LLM call
+        messages.append({
+            "role": "assistant",
+            "content": content,
+            "tool_calls": tool_calls_raw
+        })
+
+        # Check if any terminal tool is being called
+        should_break = False
+
+        # Execute each tool and add results
+        for tc in tool_calls_raw:
+            tool_name = tc["function"]["name"]
+            args = json.loads(tc["function"]["arguments"])
+
+            # Check if this is a terminal tool
+            if tool_name in terminal_tools:
+                print(f"[Agentic Loop] Terminal tool called: {tool_name}")
+                terminal_tool_called = tool_name
+                terminal_tool_result = {"tool_name": tool_name, "args": args, "tool_call": tc}
+                should_break = True
+                # Don't execute terminal tools here - caller will handle them
+                continue
+
+            print(f"[Agentic Loop] Executing tool: {tool_name}")
+            result = tool_executor.execute(tool_name, args)
+
+            # Add tool result to session AFTER assistant message (correct order)
+            tool_result_msg = Message(
+                role=MessageRole.TOOL,
+                content=json.dumps(result),
+                tool_call_id=tc["id"]
+            )
+            session.messages.append(tool_result_msg)
+
+            # Also add to messages list for next LLM call
+            messages.append({
+                "role": "tool",
+                "content": json.dumps(result),
+                "tool_call_id": tc["id"]
+            })
+
+            # Track classification updates
+            if tool_name == "classify_columns" and result.get("success"):
+                classification_updated = session.classification
+                session.status = SessionStatus.PROPOSED
+                # Update context for next iteration
+                session_context = _build_session_context(session)
+                print(f"[Agentic Loop] Classification updated, status -> PROPOSED")
+
+        # Update final_content in case we hit max iterations or break
+        final_content = content
+
+        if should_break:
+            print(f"[Agentic Loop] Breaking due to terminal tool")
+            break
+
+    if iteration >= MAX_AGENTIC_ITERATIONS:
+        print(f"[Agentic Loop] Warning: Hit max iterations ({MAX_AGENTIC_ITERATIONS})")
+
+    return {
+        "content": final_content,
+        "classification_updated": classification_updated,
+        "iterations": iteration,
+        "terminal_tool": terminal_tool_called,
+        "terminal_tool_result": terminal_tool_result
+    }
+
 
 def _build_session_context(session: Session) -> Dict[str, Any]:
     """Build session context for LLM with file info and classification."""
@@ -212,7 +361,7 @@ async def upload_file(session_id: str, file: UploadFile = File(...)):
     session.status = SessionStatus.ANALYZING
     session_manager.update_session(session)
 
-    # Get AI analysis
+    # Get AI analysis using agentic loop
     conversation = ConversationManager(session)
     messages = conversation.get_messages_for_llm()
 
@@ -224,52 +373,13 @@ async def upload_file(session_id: str, file: UploadFile = File(...)):
     # Build session context for LLM
     session_context = _build_session_context(session)
 
-    # Get LLM response with context
-    llm_response = await llm_adapter.chat_async(messages, session_context)
+    # Create tool executor
+    tool_executor = ToolExecutor(session)
 
-    # Process response
-    ai_response_text = llm_response.get("content", "")
+    # Run agentic loop - LLM will call tools and we'll loop until it's done
+    result = await _run_agentic_loop(session, messages, session_context, tool_executor)
 
-    # Handle tool calls if any
-    if llm_response.get("tool_calls"):
-        tool_executor = ToolExecutor(session)
-
-        tool_calls = []
-        for tc in llm_response["tool_calls"]:
-            tool_calls.append(ToolCall(
-                id=tc["id"],
-                type=tc["type"],
-                function=tc["function"]
-            ))
-
-            # Execute tool
-            args = json.loads(tc["function"]["arguments"])
-            result = tool_executor.execute(tc["function"]["name"], args)
-
-            # Add tool result to messages
-            tool_result_msg = Message(
-                role=MessageRole.TOOL,
-                content=json.dumps(result),
-                tool_call_id=tc["id"]
-            )
-            session.messages.append(tool_result_msg)
-
-        # Add assistant message with tool calls
-        assistant_msg = Message(
-            role=MessageRole.ASSISTANT,
-            content=ai_response_text,
-            tool_calls=tool_calls if tool_calls else None
-        )
-        session.messages.append(assistant_msg)
-
-        # Update status based on classification
-        if session.classification:
-            session.status = SessionStatus.PROPOSED
-
-    else:
-        # Add plain assistant message
-        assistant_msg = Message(role=MessageRole.ASSISTANT, content=ai_response_text)
-        session.messages.append(assistant_msg)
+    ai_response_text = result["content"]
 
     session_manager.update_session(session)
 
@@ -308,92 +418,73 @@ async def chat(session_id: str, request: ChatRequest):
     # Build session context for LLM
     session_context = _build_session_context(session)
 
-    # Get LLM response with context
-    llm_response = await llm_adapter.chat_async(messages, session_context)
+    # Create tool executor
+    tool_executor = ToolExecutor(session)
 
-    ai_response_text = llm_response.get("content", "")
-    classification_updated = None
+    # Run agentic loop with execute_pipeline as terminal tool
+    # (execute_pipeline needs special async handling)
+    result = await _run_agentic_loop(
+        session, messages, session_context, tool_executor,
+        terminal_tools=["execute_pipeline"]
+    )
 
-    # Handle tool calls
-    if llm_response.get("tool_calls"):
-        tool_executor = ToolExecutor(session, pipeline_callback=_execute_pipeline)
+    ai_response_text = result["content"]
+    classification_updated = result.get("classification_updated")
 
-        tool_calls = []
-        for tc in llm_response["tool_calls"]:
-            tool_calls.append(ToolCall(
-                id=tc["id"],
-                type=tc["type"],
-                function=tc["function"]
-            ))
+    # Handle execute_pipeline if it was called
+    if result.get("terminal_tool") == "execute_pipeline":
+        terminal_info = result["terminal_tool_result"]
+        tc = terminal_info["tool_call"]
 
-            # Execute tool
-            tool_name = tc["function"]["name"]
-            args = json.loads(tc["function"]["arguments"])
-            result = tool_executor.execute(tool_name, args)
+        # First execute the tool to validate
+        args = terminal_info["args"]
+        tool_result = tool_executor.execute("execute_pipeline", args)
 
-            # Add tool result message
-            tool_result_msg = Message(
-                role=MessageRole.TOOL,
-                content=json.dumps(result),
-                tool_call_id=tc["id"]
-            )
-            session.messages.append(tool_result_msg)
-
-            # Handle pipeline execution
-            if tool_name == "execute_pipeline" and result.get("success"):
-                session.status = SessionStatus.MASKING
-
-                # Clean up old output/report files before retry
-                if session.output_path and os.path.exists(session.output_path):
-                    os.remove(session.output_path)
-                    session.output_path = None
-                if session.report_path and os.path.exists(session.report_path):
-                    os.remove(session.report_path)
-                    session.report_path = None
-                session.validation_result = None
-
-                session_manager.update_session(session)
-
-                # Execute pipeline asynchronously
-                pipeline_result = await pipeline_executor.execute(session)
-
-                if pipeline_result.get("error"):
-                    session.status = SessionStatus.FAILED
-                    ai_response_text = f"Pipeline execution failed: {pipeline_result['error']}"
-                else:
-                    if pipeline_result.get("validation_result"):
-                        session.validation_result = pipeline_result["validation_result"]
-                        # Always save output and report paths (available for download regardless of pass/fail)
-                        session.output_path = pipeline_result.get("output_path")
-                        session.report_path = pipeline_result.get("report_path")
-
-                        if pipeline_result["validation_result"].passed:
-                            session.status = SessionStatus.COMPLETED
-                            ai_response_text = "Anonymization complete! Validation passed. You can now download the anonymized CSV and privacy report."
-                        else:
-                            session.status = SessionStatus.FAILED
-                            failed = pipeline_result["validation_result"].failed_metrics
-                            ai_response_text = f"Validation failed for metrics: {', '.join(failed)}. You can still download the anonymized CSV and report. Would you like to adjust the generalization levels or thresholds and try again?"
-
-            # Track classification updates
-            if tool_name == "classify_columns" and result.get("success"):
-                classification_updated = session.classification
-                session.status = SessionStatus.PROPOSED
-
-        # Add assistant message with tool calls
-        assistant_msg = Message(
-            role=MessageRole.ASSISTANT,
-            content=ai_response_text,
-            tool_calls=tool_calls
+        # Add tool result message
+        tool_result_msg = Message(
+            role=MessageRole.TOOL,
+            content=json.dumps(tool_result),
+            tool_call_id=tc["id"]
         )
-        session.messages.append(assistant_msg)
+        session.messages.append(tool_result_msg)
 
-    else:
-        # Plain assistant message
-        assistant_msg = Message(role=MessageRole.ASSISTANT, content=ai_response_text)
-        session.messages.append(assistant_msg)
+        if tool_result.get("success"):
+            session.status = SessionStatus.MASKING
 
-        # Update status based on conversation
+            # Clean up old output/report files before retry
+            if session.output_path and os.path.exists(session.output_path):
+                os.remove(session.output_path)
+                session.output_path = None
+            if session.report_path and os.path.exists(session.report_path):
+                os.remove(session.report_path)
+                session.report_path = None
+            session.validation_result = None
+
+            session_manager.update_session(session)
+
+            # Execute pipeline asynchronously
+            pipeline_result = await pipeline_executor.execute(session)
+
+            if pipeline_result.get("error"):
+                session.status = SessionStatus.FAILED
+                ai_response_text = f"Pipeline execution failed: {pipeline_result['error']}"
+            else:
+                if pipeline_result.get("validation_result"):
+                    session.validation_result = pipeline_result["validation_result"]
+                    session.output_path = pipeline_result.get("output_path")
+                    session.report_path = pipeline_result.get("report_path")
+
+                    if pipeline_result["validation_result"].passed:
+                        session.status = SessionStatus.COMPLETED
+                        ai_response_text = "Anonymization complete! Validation passed. You can now download the anonymized CSV and privacy report."
+                    else:
+                        session.status = SessionStatus.FAILED
+                        failed = pipeline_result["validation_result"].failed_metrics
+                        ai_response_text = f"Validation failed for metrics: {', '.join(failed)}. You can still download the anonymized CSV and report. Would you like to adjust the generalization levels or thresholds and try again?"
+
+    # Update status for discussion if no tools were called
+    if result["iterations"] == 1 and not result.get("terminal_tool"):
+        # If LLM just responded without tools
         if session.status == SessionStatus.PROPOSED:
             session.status = SessionStatus.DISCUSSING
 
