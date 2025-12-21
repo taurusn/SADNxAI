@@ -268,15 +268,21 @@ class Database:
 
                     classification_id = row['id']
 
-                    # Save regulation references
+                    # Save regulation references (skip invalid regulation IDs)
                     for reg in c.get('regulation_refs', []):
-                        await conn.execute("""
-                            INSERT INTO classification_regulations
-                            (classification_on_job_id, regulation_id, relevance)
-                            VALUES ($1, $2, $3)
-                            ON CONFLICT (classification_on_job_id, regulation_id) DO UPDATE
-                            SET relevance = EXCLUDED.relevance
-                        """, classification_id, reg['regulation_id'], reg.get('relevance'))
+                        reg_id = reg.get('regulation_id', '')
+                        # Check if regulation exists before inserting
+                        exists = await conn.fetchval(
+                            "SELECT 1 FROM regulations WHERE id = $1", reg_id
+                        )
+                        if exists:
+                            await conn.execute("""
+                                INSERT INTO classification_regulations
+                                (classification_on_job_id, regulation_id, relevance)
+                                VALUES ($1, $2, $3)
+                                ON CONFLICT (classification_on_job_id, regulation_id) DO UPDATE
+                                SET relevance = EXCLUDED.relevance
+                            """, classification_id, reg_id, reg.get('relevance'))
 
                     results.append(dict(row))
 
