@@ -1098,9 +1098,14 @@ async def generate_report(self, job_id: UUID) -> str:
   - [x] LLM cites regulations correctly (9 refs saved in test)
   - [x] PDF report generated successfully (2 pages)
 
-### Pending
+- [x] **Optional Enhancements**
+  - [x] Added 5 new PDPL regulations (Art 6, 8, 12, 20, 25) - now 22 total
+  - [x] Added technique-regulation mappings for new regulations
+  - [x] Updated LLM prompt to only use regulation IDs from query results
+  - [x] PDF report already includes regulation refs in justifications section
 
-- [ ] **Optional Enhancements**
-  - [ ] Add more PDPL/SAMA regulations to cover edge cases
-  - [ ] Improve LLM instruction to only use regulation IDs from query results
-  - [ ] Add regulation refs to PDF report justifications section
+---
+
+## Project Status: COMPLETE
+
+All planned phases and optional enhancements have been implemented and tested.
