@@ -1080,10 +1080,27 @@ async def generate_report(self, job_id: UUID) -> str:
   - [x] Job status updates during pipeline: masking → validating → completed/failed
   - [x] Classifications and report now correctly linked via same job_id
 
+- [x] **Phase 9: Agentic Loop & Async Fixes**
+  - [x] Implemented `_run_agentic_loop()` for proper multi-turn tool execution
+  - [x] Fixed message ordering (ASSISTANT before TOOL)
+  - [x] Made tool executor properly async to avoid coroutine warnings
+  - [x] Made `reasoning` field optional in classify_columns validation
+
+- [x] **Phase 10: Regulation Refs Integration**
+  - [x] Updated prompt examples to show `regulation_refs` field usage
+  - [x] LLM now calls `query_regulations` before `classify_columns`
+  - [x] Added graceful handling of invalid regulation IDs (skip instead of fail)
+  - [x] Verified regulation refs saved to `classification_regulations` table
+
+- [x] **Testing**
+  - [x] Database setup and queries verified (17 regulations, 6 techniques, 5 types)
+  - [x] End-to-end flow tested: upload → classify → approve → pipeline → download
+  - [x] LLM cites regulations correctly (9 refs saved in test)
+  - [x] PDF report generated successfully (2 pages)
+
 ### Pending
 
-- [ ] **Testing**
-  - [ ] Test database setup and queries
-  - [ ] End-to-end integration testing
-  - [ ] Verify LLM cites regulations correctly
-  - [ ] Check PDF report quality
+- [ ] **Optional Enhancements**
+  - [ ] Add more PDPL/SAMA regulations to cover edge cases
+  - [ ] Improve LLM instruction to only use regulation IDs from query results
+  - [ ] Add regulation refs to PDF report justifications section
