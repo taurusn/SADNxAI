@@ -1,0 +1,31 @@
+national_id,customer_name,phone,email,iban,account_id,age,city,gender,account_type,balance,transaction_date,fraud_flag,notes
+1098765432,محمد أحمد الشمري,+966501234567,mohammed.shamri@email.com,SA0380000000608010167519,ACC001,35,Riyadh,M,Savings,45000.50,2024-03-15,0,Regular customer with good standing
+1087654321,فاطمة علي القحطاني,+966512345678,fatima.qahtani@email.com,SA0380000000608010167520,ACC002,28,Jeddah,F,Current,120000.00,2024-03-14,0,Premium banking client
+1076543210,عبدالله سعد العتيبي,+966523456789,abdullah.otaibi@email.com,SA0380000000608010167521,ACC003,45,Dammam,M,Business,350000.75,2024-03-13,0,Small business owner
+1065432109,نورة خالد الدوسري,+966534567890,noura.dosari@email.com,SA0380000000608010167522,ACC004,32,Riyadh,F,Savings,78000.25,2024-03-12,1,Flagged for unusual activity
+1054321098,سلطان محمد الحربي,+966545678901,sultan.harbi@email.com,SA0380000000608010167523,ACC005,55,Mecca,M,Current,200000.00,2024-03-11,0,Long-term customer since 2010
+2098765432,أحمد يوسف المالكي,+966556789012,ahmed.maliki@email.com,SA0380000000608010167524,ACC006,41,Medina,M,Savings,95000.00,2024-03-10,0,Iqama holder - expat worker
+1043210987,سارة عبدالرحمن النعيمي,+966567890123,sara.nuaimi@email.com,SA0380000000608010167525,ACC007,29,Riyadh,F,Current,150000.50,2024-03-09,0,Government employee
+1032109876,خالد إبراهيم الغامدي,+966578901234,khaled.ghamdi@email.com,SA0380000000608010167526,ACC008,38,Jeddah,M,Business,500000.00,2024-03-08,0,Import/export business
+1021098765,ريم سعود الشهري,+966589012345,reem.shahri@email.com,SA0380000000608010167527,ACC009,25,Dammam,F,Savings,25000.75,2024-03-07,0,Recent graduate - new account
+1010987654,فهد عبدالعزيز الزهراني,+966590123456,fahad.zahrani@email.com,SA0380000000608010167528,ACC010,62,Riyadh,M,Current,750000.25,2024-03-06,0,Retired government official
+2087654321,يوسف علي الراشد,+966501234568,yousef.rashed@email.com,SA0380000000608010167529,ACC011,33,Jeddah,M,Savings,55000.00,2024-03-05,0,Iqama holder - healthcare worker
+1009876543,منى حسن السبيعي,+966512345679,mona.subaie@email.com,SA0380000000608010167530,ACC012,47,Mecca,F,Current,180000.00,2024-03-04,1,Under review for large transfers
+1098765433,عمر فيصل المطيري,+966523456780,omar.mutairi@email.com,SA0380000000608010167531,ACC013,30,Riyadh,M,Business,420000.50,2024-03-03,0,Tech startup founder
+1087654322,هند ناصر العنزي,+966534567891,hind.anazi@email.com,SA0380000000608010167532,ACC014,36,Dammam,F,Savings,67000.25,2024-03-02,0,Teacher - public school
+1076543211,بدر محمد الشمراني,+966545678902,badr.shamrani@email.com,SA0380000000608010167533,ACC015,52,Jeddah,M,Current,290000.00,2024-03-01,0,Construction company manager
+2076543210,لينا أحمد الخالدي,+966556789013,lina.khalidi@email.com,SA0380000000608010167534,ACC016,27,Riyadh,F,Savings,42000.75,2024-02-28,0,Iqama holder - banking sector
+1065432110,سامي عبدالله البقمي,+966567890124,sami.bugami@email.com,SA0380000000608010167535,ACC017,44,Medina,M,Business,610000.00,2024-02-27,0,Restaurant chain owner
+1054321099,عائشة سلمان الجهني,+966578901235,aisha.juhani@email.com,SA0380000000608010167536,ACC018,31,Riyadh,F,Current,130000.50,2024-02-26,0,Marketing professional
+1043210988,تركي خالد الرشيدي,+966589012346,turki.rashidi@email.com,SA0380000000608010167537,ACC019,58,Jeddah,M,Savings,380000.25,2024-02-25,0,Senior bank executive
+1032109877,دانة محمد السويلم,+966590123457,dana.suwailm@email.com,SA0380000000608010167538,ACC020,23,Dammam,F,Savings,18000.00,2024-02-24,0,University student - part time
+1021098766,ماجد سعد الحمود,+966501234569,majed.hamoud@email.com,SA0380000000608010167539,ACC021,40,Riyadh,M,Business,720000.75,2024-02-23,1,Large cash deposits flagged
+2065432109,نوف عبدالرحمن الشريف,+966512345680,nouf.sharif@email.com,SA0380000000608010167540,ACC022,34,Mecca,F,Current,95000.00,2024-02-22,0,Iqama holder - education sector
+1010987655,حمد فهد الدخيل,+966523456781,hamad.dakhil@email.com,SA0380000000608010167541,ACC023,49,Jeddah,M,Savings,210000.50,2024-02-21,0,Medical doctor - private clinic
+1009876544,أمل خالد المحمود,+966534567892,amal.mahmoud@email.com,SA0380000000608010167542,ACC024,26,Riyadh,F,Current,56000.25,2024-02-20,0,Software engineer
+1098765434,راشد عبدالله الفهد,+966545678903,rashed.fahd@email.com,SA0380000000608010167543,ACC025,65,Dammam,M,Savings,890000.00,2024-02-19,0,Retired businessman
+1087654323,ليلى سعود النفيعي,+966556789014,layla.nufaie@email.com,SA0380000000608010167544,ACC026,37,Riyadh,F,Business,175000.75,2024-02-18,0,Boutique owner
+1076543212,ناصر محمد السهلي,+966567890125,nasser.sahli@email.com,SA0380000000608010167545,ACC027,43,Jeddah,M,Current,340000.00,2024-02-17,0,Logistics company director
+2054321098,سلمى أحمد الكندري,+966578901236,salma.kandari@email.com,SA0380000000608010167546,ACC028,29,Medina,F,Savings,48000.50,2024-02-16,0,Iqama holder - retail manager
+1065432111,وليد إبراهيم الحسين,+966589012347,waleed.hussain@email.com,SA0380000000608010167547,ACC029,51,Riyadh,M,Business,550000.25,2024-02-15,0,Real estate developer
+1054321100,غادة فيصل الشهراني,+966590123458,ghada.shahrani@email.com,SA0380000000608010167548,ACC030,33,Dammam,F,Current,125000.00,2024-02-14,0,HR manager - oil company

@@ -59,5 +59,7 @@ For EACH column, provide:
 - You MUST call `classify_columns` tool - text descriptions alone won't work
 - Include regulation citations in your reasoning
 - Use query_regulations first to get accurate citations
+- ONLY use regulation IDs returned by query_regulations (e.g., PDPL-Art-11, SAMA-2.6.2)
+- DO NOT invent or guess regulation IDs - only use IDs from the database query results
 
 """ + TOOL_FORMAT
