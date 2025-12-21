@@ -140,7 +140,7 @@ async def _run_agentic_loop(
                 continue
 
             print(f"[Agentic Loop] Executing tool: {tool_name}")
-            result = tool_executor.execute(tool_name, args)
+            result = await tool_executor.execute(tool_name, args)
 
             # Add tool result to session AFTER assistant message (correct order)
             tool_result_msg = Message(
@@ -438,7 +438,7 @@ async def chat(session_id: str, request: ChatRequest):
 
         # First execute the tool to validate
         args = terminal_info["args"]
-        tool_result = tool_executor.execute("execute_pipeline", args)
+        tool_result = await tool_executor.execute("execute_pipeline", args)
 
         # Add tool result message
         tool_result_msg = Message(

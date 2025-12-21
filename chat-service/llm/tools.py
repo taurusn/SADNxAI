@@ -37,7 +37,7 @@ class ToolExecutor:
         self.session = session
         self.pipeline_callback = pipeline_callback
 
-    def execute(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
+    async def execute(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """
         Execute a tool call.
 
@@ -60,11 +60,15 @@ class ToolExecutor:
             return {"error": f"Unknown tool: {tool_name}"}
 
         try:
-            return handler(arguments)
+            result = handler(arguments)
+            # If handler returns a coroutine, await it
+            if asyncio.iscoroutine(result):
+                return await result
+            return result
         except Exception as e:
             return {"error": str(e)}
 
-    def _handle_classify_columns(self, args: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_classify_columns(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """
         Handle classify_columns tool call.
 
@@ -135,10 +139,10 @@ class ToolExecutor:
                     "regulation_refs": regulation_refs.get(col, [])
                 })
 
-        # Save to PostgreSQL (async in sync context)
+        # Save to PostgreSQL
         db_save_result = None
         if db_classifications:
-            db_save_result = self._save_classifications_to_db(db_classifications)
+            db_save_result = await self._save_classifications_to_db(db_classifications)
 
         # Count classified columns
         total_classified = (
@@ -168,38 +172,30 @@ class ToolExecutor:
 
         return result
 
-    def _save_classifications_to_db(self, classifications: list) -> Dict[str, Any]:
+    async def _save_classifications_to_db(self, classifications: list) -> Dict[str, Any]:
         """Save classifications to PostgreSQL database"""
         from shared.database import Database
         from uuid import UUID
 
-        async def _save():
-            try:
-                job_id = UUID(self.session.id)
-                # Ensure job exists
-                job = await Database.get_job(job_id)
-                if not job:
-                    await Database.create_job(job_id, self.session.title)
+        try:
+            job_id = UUID(self.session.id)
+            # Ensure job exists
+            job = await Database.get_job(job_id)
+            if not job:
+                await Database.create_job(job_id, self.session.title)
 
-                # Save classifications
-                saved = await Database.save_classifications(job_id, classifications)
-                return {
-                    "success": True,
-                    "saved_count": len(saved)
-                }
-            except Exception as e:
-                print(f"Failed to save classifications to DB: {e}")
-                return {
-                    "success": False,
-                    "error": str(e)
-                }
-            finally:
-                # Close pool to avoid connection leaks in thread context
-                await Database.close()
-
-        # Run async query in a fresh event loop
-        # This avoids conflicts with the main event loop
-        return asyncio.run(_save())
+            # Save classifications
+            saved = await Database.save_classifications(job_id, classifications)
+            return {
+                "success": True,
+                "saved_count": len(saved)
+            }
+        except Exception as e:
+            print(f"Failed to save classifications to DB: {e}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
 
     def _handle_execute_pipeline(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -313,7 +309,7 @@ class ToolExecutor:
             }
         }
 
-    def _handle_query_regulations(self, args: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_query_regulations(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """
         Handle query_regulations tool call.
 
@@ -330,42 +326,34 @@ class ToolExecutor:
                 "error": "Both query_type and value are required"
             }
 
-        async def _query():
-            try:
-                if query_type == "technique":
-                    results = await Database.query_regulations_by_technique(value)
-                elif query_type == "classification_type":
-                    results = await Database.query_regulations_by_classification_type(value)
-                elif query_type == "search":
-                    results = await Database.search_regulations(value)
-                elif query_type == "by_ids":
-                    ids = [id.strip() for id in value.split(",")]
-                    results = await Database.query_regulations_by_ids(ids)
-                elif query_type == "pattern":
-                    result = await Database.detect_saudi_pattern(value)
-                    results = [result] if result else []
-                else:
-                    return {
-                        "success": False,
-                        "error": f"Unknown query_type: {query_type}. Valid types: technique, classification_type, search, by_ids, pattern"
-                    }
-
-                return {
-                    "success": True,
-                    "query_type": query_type,
-                    "value": value,
-                    "regulations": results,
-                    "count": len(results)
-                }
-            except Exception as e:
+        try:
+            if query_type == "technique":
+                results = await Database.query_regulations_by_technique(value)
+            elif query_type == "classification_type":
+                results = await Database.query_regulations_by_classification_type(value)
+            elif query_type == "search":
+                results = await Database.search_regulations(value)
+            elif query_type == "by_ids":
+                ids = [id.strip() for id in value.split(",")]
+                results = await Database.query_regulations_by_ids(ids)
+            elif query_type == "pattern":
+                result = await Database.detect_saudi_pattern(value)
+                results = [result] if result else []
+            else:
                 return {
                     "success": False,
-                    "error": f"Database query failed: {str(e)}"
+                    "error": f"Unknown query_type: {query_type}. Valid types: technique, classification_type, search, by_ids, pattern"
                 }
-            finally:
-                # Close pool to avoid connection leaks in thread context
-                await Database.close()
 
-        # Run async query in a fresh event loop
-        # This avoids conflicts with the main event loop
-        return asyncio.run(_query())
+            return {
+                "success": True,
+                "query_type": query_type,
+                "value": value,
+                "regulations": results,
+                "count": len(results)
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"Database query failed: {str(e)}"
+            }
