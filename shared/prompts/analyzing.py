@@ -33,7 +33,7 @@ For EACH column, provide:
 {"tool": "query_regulations", "arguments": {"query_type": "technique", "value": "SUPPRESS"}}
 ```
 
-2. After receiving regulation data, classify:
+2. After receiving regulation data, classify with regulation_refs:
 ```tool_call
 {"tool": "classify_columns", "arguments": {
   "direct_identifiers": ["national_id", "name", "phone"],
@@ -41,8 +41,13 @@ For EACH column, provide:
   "linkage_identifiers": ["customer_id"],
   "date_columns": ["transaction_date"],
   "sensitive_attributes": ["amount", "fraud_flag"],
-  "recommended_techniques": {...},
-  "reasoning": {"national_id": "Direct identifier - must suppress per PDPL Art.11", ...}
+  "recommended_techniques": {"national_id": "SUPPRESS", "name": "SUPPRESS", "phone": "SUPPRESS", "age": "GENERALIZE", "city": "GENERALIZE", "customer_id": "PSEUDONYMIZE", "transaction_date": "DATE_SHIFT", "amount": "KEEP", "fraud_flag": "KEEP"},
+  "reasoning": {"national_id": "Direct identifier - must suppress per PDPL Art.11", "age": "Quasi-identifier for k-anonymity"},
+  "regulation_refs": {
+    "national_id": [{"regulation_id": "PDPL-Art-11", "relevance": "Data minimization requires removal"}, {"regulation_id": "PDPL-Art-28", "relevance": "National ID protection"}],
+    "age": [{"regulation_id": "PDPL-Art-17", "relevance": "Generalization maintains data quality"}],
+    "customer_id": [{"regulation_id": "PDPL-Art-19", "relevance": "Technical protection via pseudonymization"}]
+  }
 }}
 ```
 
