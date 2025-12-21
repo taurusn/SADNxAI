@@ -7,10 +7,10 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        primary: '#3d2b1f',
-        'sidebar': '#2a1e15',
-        'sidebar-light': '#3d2b1f',
-        'sidebar-border': '#4a362a',
+        primary: '#14b8a6',
+        'sidebar': '#134e4a',
+        'sidebar-light': '#115e59',
+        'sidebar-border': '#0f766e',
         success: '#10B981',
         warning: '#F59E0B',
         error: '#EF4444',
