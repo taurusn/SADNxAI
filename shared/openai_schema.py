@@ -128,8 +128,7 @@ TOOLS = [
                     "linkage_identifiers",
                     "date_columns",
                     "sensitive_attributes",
-                    "recommended_techniques",
-                    "reasoning"
+                    "recommended_techniques"
                 ]
             }
         }

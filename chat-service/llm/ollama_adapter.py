@@ -266,7 +266,7 @@ class OllamaAdapter:
         },
         "classify_columns": {
             "required": ["direct_identifiers", "quasi_identifiers", "linkage_identifiers",
-                        "date_columns", "sensitive_attributes", "recommended_techniques", "reasoning"],
+                        "date_columns", "sensitive_attributes", "recommended_techniques"],
             "types": {
                 "direct_identifiers": list,
                 "quasi_identifiers": list,
