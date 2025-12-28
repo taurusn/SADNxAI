@@ -118,7 +118,7 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  // Upload file to current session
+  // Upload file to current session with streaming
   uploadFile: async (file: File) => {
     const sessionId = get().currentSessionId;
     if (!sessionId) {
@@ -126,41 +126,95 @@ export const useStore = create<AppState>((set, get) => ({
       return;
     }
 
-    set({ isSending: true, error: null });
+    // Add user message immediately
+    const currentSession = get().currentSession;
+    if (currentSession) {
+      const userMessage: Message = { role: 'user', content: `I've uploaded a file: ${file.name}` };
+      set({
+        currentSession: {
+          ...currentSession,
+          title: file.name,
+          messages: [...currentSession.messages, userMessage],
+        },
+        isSending: true,
+        streamingContent: '',
+        streamingStatus: 'thinking',
+        currentTool: null,
+        error: null,
+      });
+    }
+
     try {
-      const response = await api.uploadFile(sessionId, file);
+      let finalContent = '';
+      let fileInfo: { columns?: string[], row_count?: number } = {};
 
-      // Add messages to current session
-      const currentSession = get().currentSession;
-      if (currentSession) {
-        const userMessage: Message = {
-          role: 'user',
-          content: `I've uploaded a file: ${file.name}`,
-        };
-        const assistantMessage: Message = {
-          role: 'assistant',
-          content: response.ai_response,
-        };
+      await api.uploadFileStream(sessionId, file, (event: StreamEvent) => {
+        const session = get().currentSession;
+        if (!session) return;
 
-        set({
-          currentSession: {
-            ...currentSession,
-            title: file.name,
-            columns: response.columns,
-            sample_data: response.sample_data,
-            row_count: response.row_count,
-            status: 'analyzing',
-            messages: [...currentSession.messages, userMessage, assistantMessage],
-          },
-          isSending: false,
-        });
-      }
+        switch (event.type) {
+          case 'file_info':
+            fileInfo = { columns: event.columns, row_count: event.row_count };
+            set({
+              currentSession: {
+                ...session,
+                columns: event.columns || [],
+                row_count: event.row_count || 0,
+                status: 'analyzing',
+              },
+            });
+            break;
 
-      // Reload full session to get updated state
+          case 'thinking':
+            set({ streamingStatus: 'thinking', streamingContent: event.content || 'Processing...' });
+            break;
+
+          case 'tool_call':
+            set({ streamingStatus: 'tool', currentTool: event.tool || null });
+            break;
+
+          case 'tool_result':
+            set({ currentTool: null });
+            break;
+
+          case 'message':
+            finalContent = event.content || '';
+            set({ streamingContent: finalContent });
+            break;
+
+          case 'done':
+            const assistantMessage: Message = {
+              role: 'assistant',
+              content: finalContent,
+            };
+
+            set({
+              currentSession: {
+                ...session,
+                status: event.status || session.status,
+                messages: [...session.messages, assistantMessage],
+              },
+              isSending: false,
+              streamingStatus: null,
+              streamingContent: '',
+              currentTool: null,
+            });
+            break;
+        }
+      });
+
+      // Reload full session to get complete state
       await get().selectSession(sessionId);
       await get().loadSessions();
+
     } catch (err) {
-      set({ error: (err as Error).message, isSending: false });
+      set({
+        error: (err as Error).message,
+        isSending: false,
+        streamingStatus: null,
+        streamingContent: '',
+        currentTool: null,
+      });
     }
   },
 

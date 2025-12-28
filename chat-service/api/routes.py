@@ -434,9 +434,9 @@ async def delete_session(session_id: str):
 # File Upload
 # ============================================================
 
-@router.post("/sessions/{session_id}/upload", response_model=UploadResponse)
+@router.post("/sessions/{session_id}/upload")
 async def upload_file(session_id: str, file: UploadFile = File(...)):
-    """Upload a CSV file for analysis"""
+    """Upload a CSV file for analysis with SSE streaming"""
     session = session_manager.get_session(session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -479,33 +479,53 @@ async def upload_file(session_id: str, file: UploadFile = File(...)):
     session.status = SessionStatus.ANALYZING
     session_manager.update_session(session)
 
-    # Get AI analysis using agentic loop
-    conversation = ConversationManager(session)
-    messages = conversation.get_messages_for_llm()
+    async def event_stream():
+        nonlocal session
 
-    # Add user message about upload
-    user_msg = Message(role=MessageRole.USER, content=f"I've uploaded a file: {file.filename}")
-    session.messages.append(user_msg)
-    messages.append({"role": "user", "content": user_msg.content})
+        # Send file info first
+        yield _sse_event("file_info", {
+            "columns": columns,
+            "row_count": row_count,
+            "filename": file.filename
+        })
 
-    # Build session context for LLM
-    session_context = _build_session_context(session)
+        # Get AI analysis using streaming agentic loop
+        conversation = ConversationManager(session)
+        messages = conversation.get_messages_for_llm()
 
-    # Create tool executor
-    tool_executor = ToolExecutor(session)
+        # Add user message about upload
+        user_msg = Message(role=MessageRole.USER, content=f"I've uploaded a file: {file.filename}")
+        session.messages.append(user_msg)
+        messages.append({"role": "user", "content": user_msg.content})
 
-    # Run agentic loop - LLM will call tools and we'll loop until it's done
-    result = await _run_agentic_loop(session, messages, session_context, tool_executor)
+        # Build session context for LLM
+        session_context = _build_session_context(session)
 
-    ai_response_text = result["content"]
+        # Create tool executor
+        tool_executor = ToolExecutor(session)
 
-    session_manager.update_session(session)
+        # Stream through the agentic loop
+        async for event in _run_agentic_loop_streaming(
+            session, messages, session_context, tool_executor
+        ):
+            yield event
 
-    return UploadResponse(
-        columns=columns,
-        sample_data=sample_data,
-        row_count=row_count,
-        ai_response=ai_response_text or "I'm analyzing your dataset..."
+        session_manager.update_session(session)
+
+        # Final done event
+        yield _sse_event("done", {
+            "status": session.status.value,
+            "has_classification": session.classification is not None
+        })
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
     )
 
 

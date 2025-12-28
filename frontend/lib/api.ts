@@ -47,7 +47,7 @@ export interface ChatResponse {
 }
 
 export interface StreamEvent {
-  type: 'thinking' | 'tool_call' | 'tool_result' | 'message' | 'terminal_tool' | 'pipeline_start' | 'pipeline_masking' | 'done';
+  type: 'thinking' | 'tool_call' | 'tool_result' | 'message' | 'terminal_tool' | 'pipeline_start' | 'pipeline_masking' | 'file_info' | 'done';
   content?: string;
   tool?: string;
   args?: any;
@@ -56,6 +56,10 @@ export interface StreamEvent {
   message?: string;
   has_classification?: boolean;
   has_validation?: boolean;
+  // File info fields
+  columns?: string[];
+  row_count?: number;
+  filename?: string;
 }
 
 export interface SessionDetail {
@@ -121,8 +125,12 @@ class ApiClient {
     return this.request(`/sessions/${sessionId}`, { method: 'DELETE' });
   }
 
-  // File upload
-  async uploadFile(sessionId: string, file: File): Promise<UploadResponse> {
+  // File upload with SSE streaming
+  async uploadFileStream(
+    sessionId: string,
+    file: File,
+    onEvent: (event: StreamEvent) => void
+  ): Promise<void> {
     const formData = new FormData();
     formData.append('file', file);
 
@@ -137,7 +145,33 @@ class ApiClient {
       throw new Error(error.detail);
     }
 
-    return response.json();
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error('No response body');
+    }
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try {
+            const data = JSON.parse(line.slice(6));
+            onEvent(data as StreamEvent);
+          } catch (e) {
+            console.error('Failed to parse SSE event:', line);
+          }
+        }
+      }
+    }
   }
 
   // Chat with SSE streaming
