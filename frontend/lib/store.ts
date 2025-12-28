@@ -174,7 +174,7 @@ export const useStore = create<AppState>((set, get) => ({
             break;
 
           case 'tool_result':
-            set({ currentTool: null });
+            set({ streamingStatus: 'thinking', currentTool: null, streamingContent: 'Processing...' });
             break;
 
           case 'message':
@@ -260,7 +260,7 @@ export const useStore = create<AppState>((set, get) => ({
             break;
 
           case 'tool_result':
-            set({ currentTool: null });
+            set({ streamingStatus: 'thinking', currentTool: null, streamingContent: 'Processing...' });
             break;
 
           case 'pipeline_start':
