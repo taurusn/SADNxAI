@@ -5,7 +5,7 @@ Handles communication with LLM providers (Claude API, Ollama, or Mock)
 
 import os
 import json
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, AsyncGenerator
 
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -215,6 +215,54 @@ class LLMAdapter:
                 })
 
         return result
+
+    async def chat_stream(
+        self,
+        messages: List[Dict],
+        session_context: Optional[Dict[str, Any]] = None
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """
+        Stream chat response token-by-token.
+        Filters out tool_call blocks to show only natural language.
+        """
+        if self.mock_mode:
+            # Mock: just yield the response as done
+            result = self._mock_response(messages)
+            yield {"type": "done", "content": result.get("content", ""), "tool_calls": result.get("tool_calls")}
+            return
+
+        if self.ollama_adapter:
+            # Track if we're inside a tool_call block to filter it out
+            in_tool_block = False
+            buffer = ""
+
+            async for chunk in self.ollama_adapter.chat_stream(messages, session_context):
+                if chunk["type"] == "token":
+                    token = chunk["content"]
+                    buffer += token
+
+                    # Check if entering tool_call block
+                    if "```tool_call" in buffer or "```json" in buffer:
+                        in_tool_block = True
+
+                    # Check if exiting tool_call block
+                    if in_tool_block and buffer.count("```") >= 2:
+                        # Found closing ```, reset
+                        in_tool_block = False
+                        buffer = ""
+                        continue
+
+                    # Only emit tokens if not in tool block
+                    if not in_tool_block:
+                        yield chunk
+                else:
+                    # Pass through done events
+                    yield chunk
+            return
+
+        # Claude fallback: non-streaming
+        result = self.chat(messages)
+        yield {"type": "done", "content": result.get("content", ""), "tool_calls": result.get("tool_calls")}
 
     async def check_health(self) -> Dict[str, Any]:
         """Check health of the LLM provider."""
