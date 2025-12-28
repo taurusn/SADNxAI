@@ -232,46 +232,77 @@ class LLMAdapter:
             return
 
         if self.ollama_adapter:
-            # Track if we're inside a code block to filter out tool calls
-            in_code_block = False
+            import re
+            # Track state for filtering
             buffer = ""
-            emitted_length = 0  # Track what we've already emitted
+            emitted_length = 0
+            in_code_block = False
+            in_json_block = False
+            json_brace_count = 0
 
             async for chunk in self.ollama_adapter.chat_stream(messages, session_context):
                 if chunk["type"] == "token":
                     token = chunk["content"]
                     buffer += token
 
-                    # Check for code block markers (```)
+                    # --- Filter 1: Code blocks (```) ---
                     backtick_count = buffer.count("```")
-
                     if backtick_count > 0:
                         if not in_code_block and backtick_count >= 1:
-                            # Entering a code block - emit everything before it
                             first_block = buffer.find("```")
                             text_before = buffer[:first_block]
                             new_text = text_before[emitted_length:]
+                            # Filter out any JSON in the text before code block
+                            new_text = re.sub(r'\{"tool"[^}]*\}', '', new_text)
+                            new_text = re.sub(r'\{"arguments"[^}]*\}', '', new_text)
                             if new_text.strip():
                                 yield {"type": "token", "content": new_text}
                             in_code_block = True
                             emitted_length = first_block
 
                         if in_code_block and backtick_count >= 2:
-                            # Exiting code block
-                            # Find the second ```
                             first_pos = buffer.find("```")
                             second_pos = buffer.find("```", first_pos + 3)
                             if second_pos != -1:
                                 in_code_block = False
-                                # Skip the code block content, continue after closing ```
                                 emitted_length = second_pos + 3
-                    else:
-                        # No code block markers, emit new content
-                        if not in_code_block:
-                            new_text = buffer[emitted_length:]
-                            if new_text:
-                                yield {"type": "token", "content": new_text}
-                                emitted_length = len(buffer)
+                        continue
+
+                    # --- Filter 2: Raw JSON objects {"tool": ...} ---
+                    # Check for start of JSON tool call
+                    if not in_json_block and '{"tool"' in buffer[emitted_length:]:
+                        json_start = buffer.find('{"tool"', emitted_length)
+                        if json_start != -1:
+                            # Emit text before JSON
+                            text_before = buffer[emitted_length:json_start]
+                            if text_before.strip():
+                                yield {"type": "token", "content": text_before}
+                            in_json_block = True
+                            emitted_length = json_start
+                            json_brace_count = 0
+
+                    # Track braces to find end of JSON
+                    if in_json_block:
+                        for i, c in enumerate(buffer[emitted_length:]):
+                            if c == '{':
+                                json_brace_count += 1
+                            elif c == '}':
+                                json_brace_count -= 1
+                                if json_brace_count == 0:
+                                    # Found end of JSON, skip it
+                                    in_json_block = False
+                                    emitted_length = emitted_length + i + 1
+                                    break
+                        continue
+
+                    # --- Emit clean content ---
+                    if not in_code_block and not in_json_block:
+                        new_text = buffer[emitted_length:]
+                        # Extra safety: remove any JSON-like patterns
+                        new_text = re.sub(r'\{[^{}]*"tool"[^{}]*\}', '', new_text)
+                        if new_text and not new_text.startswith('{"'):
+                            yield {"type": "token", "content": new_text}
+                            emitted_length = len(buffer)
                 else:
                     # Pass through done events
                     yield chunk

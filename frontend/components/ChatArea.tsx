@@ -129,31 +129,36 @@ export default function ChatArea() {
             {isSending && (
               <div className="flex justify-start message-enter">
                 <div className="bg-white border border-gray-200 rounded-2xl rounded-bl-md px-4 py-3 shadow-sm max-w-2xl">
+                  {/* Show accumulated content */}
+                  {streamingContent && streamingContent !== 'Processing...' && (
+                    <div className="prose prose-sm max-w-none mb-3">
+                      <ReactMarkdown>{streamingContent}</ReactMarkdown>
+                    </div>
+                  )}
+
+                  {/* Status indicators */}
                   {streamingStatus === 'thinking' && (
-                    <div className="flex items-center gap-2 text-primary">
+                    <div className="flex items-center gap-2 text-primary border-t border-gray-100 pt-2 mt-2">
                       <Sparkles className="w-4 h-4 animate-pulse" />
-                      <span className="text-sm">{streamingContent || 'Thinking...'}</span>
+                      <span className="text-sm">Thinking...</span>
                     </div>
                   )}
                   {streamingStatus === 'tool' && currentTool && (
-                    <div className="flex items-center gap-2 text-amber-600">
+                    <div className="flex items-center gap-2 text-amber-600 border-t border-gray-100 pt-2 mt-2">
                       <Wrench className="w-4 h-4 animate-spin" />
                       <span className="text-sm">Executing: {currentTool}</span>
                     </div>
                   )}
                   {streamingStatus === 'pipeline' && (
-                    <div className="flex items-center gap-2 text-purple-600">
+                    <div className="flex items-center gap-2 text-purple-600 border-t border-gray-100 pt-2 mt-2">
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      <span className="text-sm">{streamingContent || 'Running pipeline...'}</span>
+                      <span className="text-sm">Running pipeline...</span>
                     </div>
                   )}
                   {streamingStatus === 'streaming' && (
-                    <div className="prose prose-sm max-w-none">
-                      <ReactMarkdown>{streamingContent}</ReactMarkdown>
-                      <span className="inline-block w-1.5 h-4 bg-primary animate-pulse ml-0.5 align-text-bottom" />
-                    </div>
+                    <span className="inline-block w-1.5 h-4 bg-primary animate-pulse ml-0.5 align-text-bottom" />
                   )}
-                  {!streamingStatus && (
+                  {!streamingStatus && !streamingContent && (
                     <div className="flex gap-1">
                       <span className="w-2 h-2 bg-gray-400 rounded-full loading-dot" />
                       <span className="w-2 h-2 bg-gray-400 rounded-full loading-dot" />
