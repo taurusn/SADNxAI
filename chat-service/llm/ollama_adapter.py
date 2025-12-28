@@ -305,8 +305,8 @@ class OllamaAdapter:
 
         # Add dynamic context based on state
         if session_context:
-            # Add file info for ANALYZING state
-            if status.lower() in ["analyzing", "idle"] and session_context.get("file_info"):
+            # ALWAYS include file info if available - LLM needs to see columns
+            if session_context.get("file_info"):
                 fi = session_context["file_info"]
                 prompt += f"\n\n## CURRENT FILE: {fi.get('filename', '?')} ({fi.get('row_count', '?')} rows)\n"
                 columns = fi.get('columns', [])
