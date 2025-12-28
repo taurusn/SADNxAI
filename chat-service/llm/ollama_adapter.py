@@ -6,7 +6,7 @@ Connects to local Ollama instance for SLM inference
 import os
 import json
 import httpx
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, AsyncGenerator
 
 from shared.openai_schema import get_system_prompt, get_tools
 from shared.prompts import get_prompt_for_state
@@ -193,6 +193,105 @@ class OllamaAdapter:
             "content": assistant_message,
             "tool_calls": None
         }
+
+    async def chat_stream(
+        self,
+        messages: List[Dict[str, Any]],
+        session_context: Optional[Dict[str, Any]] = None
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """
+        Stream chat response token-by-token from Ollama.
+
+        Yields:
+            {"type": "token", "content": "..."} for each token
+            {"type": "done", "content": "full response", "tool_calls": [...]} when complete
+        """
+        # Build the full message list with our system prompt
+        full_messages = [
+            {"role": "system", "content": self._build_system_prompt(session_context)}
+        ]
+
+        # Add conversation history, SKIP any system messages
+        for msg in messages:
+            role = msg.get("role", "user")
+            if role == "system":
+                continue
+            full_messages.append({
+                "role": role,
+                "content": msg.get("content", "")
+            })
+
+        try:
+            client = await self._get_client()
+
+            payload = {
+                "model": self.model,
+                "messages": full_messages,
+                "stream": True,  # Enable streaming
+                "keep_alive": "10m",
+                "options": {
+                    "temperature": 0.1,
+                    "num_ctx": 24000,
+                }
+            }
+
+            async with client.stream(
+                "POST",
+                f"{self.base_url}/api/chat",
+                json=payload,
+                timeout=self.timeout
+            ) as response:
+                if response.status_code != 200:
+                    error_text = await response.aread()
+                    yield {
+                        "type": "done",
+                        "content": f"Error: {error_text.decode()}",
+                        "tool_calls": None
+                    }
+                    return
+
+                full_content = ""
+                async for line in response.aiter_lines():
+                    if not line:
+                        continue
+                    try:
+                        data = json.loads(line)
+                        message = data.get("message", {})
+                        token = message.get("content", "")
+
+                        if token:
+                            full_content += token
+                            yield {"type": "token", "content": token}
+
+                        # Check if done
+                        if data.get("done", False):
+                            # Extract tool calls from full content
+                            tool_calls = self._extract_tool_calls(full_content)
+                            if tool_calls:
+                                full_content = self._clean_response(full_content)
+
+                            yield {
+                                "type": "done",
+                                "content": full_content,
+                                "tool_calls": tool_calls
+                            }
+                            return
+                    except json.JSONDecodeError:
+                        continue
+
+        except httpx.TimeoutException:
+            yield {
+                "type": "done",
+                "content": "The local LLM took too long to respond.",
+                "tool_calls": None
+            }
+        except Exception as e:
+            print(f"Ollama stream error: {e}")
+            yield {
+                "type": "done",
+                "content": f"Error: {str(e)}",
+                "tool_calls": None
+            }
 
     def _build_system_prompt(self, session_context: Optional[Dict[str, Any]] = None) -> str:
         """Build system prompt with session context using state-based templates"""

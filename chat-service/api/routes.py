@@ -55,6 +55,7 @@ async def _run_agentic_loop_streaming(
 ) -> AsyncGenerator[str, None]:
     """
     Streaming version of agentic loop - yields SSE events as they happen.
+    Streams LLM response tokens in real-time like Claude chat.
     """
     terminal_tools = terminal_tools or []
     iteration = 0
@@ -66,10 +67,17 @@ async def _run_agentic_loop_streaming(
         # Yield thinking event
         yield _sse_event("thinking", {"content": f"Processing... (iteration {iteration})"})
 
-        # Call LLM
-        llm_response = await llm_adapter.chat_async(messages, session_context)
-        content = llm_response.get("content", "")
-        tool_calls_raw = llm_response.get("tool_calls")
+        # Stream LLM response token-by-token
+        content = ""
+        tool_calls_raw = None
+
+        async for chunk in llm_adapter.chat_stream(messages, session_context):
+            if chunk["type"] == "token":
+                # Stream each token to frontend
+                yield _sse_event("text_delta", {"content": chunk["content"]})
+            elif chunk["type"] == "done":
+                content = chunk.get("content", "")
+                tool_calls_raw = chunk.get("tool_calls")
 
         # If no tool calls, we're done - yield final message
         if not tool_calls_raw:

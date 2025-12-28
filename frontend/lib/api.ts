@@ -47,7 +47,7 @@ export interface ChatResponse {
 }
 
 export interface StreamEvent {
-  type: 'thinking' | 'tool_call' | 'tool_result' | 'message' | 'terminal_tool' | 'pipeline_start' | 'pipeline_masking' | 'file_info' | 'done';
+  type: 'thinking' | 'tool_call' | 'tool_result' | 'message' | 'text_delta' | 'terminal_tool' | 'pipeline_start' | 'pipeline_masking' | 'file_info' | 'done';
   content?: string;
   tool?: string;
   args?: any;

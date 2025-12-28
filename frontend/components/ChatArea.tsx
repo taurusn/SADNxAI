@@ -147,16 +147,17 @@ export default function ChatArea() {
                       <span className="text-sm">{streamingContent || 'Running pipeline...'}</span>
                     </div>
                   )}
+                  {streamingStatus === 'streaming' && (
+                    <div className="prose prose-sm max-w-none">
+                      <ReactMarkdown>{streamingContent}</ReactMarkdown>
+                      <span className="inline-block w-1.5 h-4 bg-primary animate-pulse ml-0.5 align-text-bottom" />
+                    </div>
+                  )}
                   {!streamingStatus && (
                     <div className="flex gap-1">
                       <span className="w-2 h-2 bg-gray-400 rounded-full loading-dot" />
                       <span className="w-2 h-2 bg-gray-400 rounded-full loading-dot" />
                       <span className="w-2 h-2 bg-gray-400 rounded-full loading-dot" />
-                    </div>
-                  )}
-                  {streamingContent && streamingStatus !== 'thinking' && streamingStatus !== 'pipeline' && (
-                    <div className="mt-2 prose prose-sm max-w-none">
-                      <ReactMarkdown>{streamingContent}</ReactMarkdown>
                     </div>
                   )}
                 </div>

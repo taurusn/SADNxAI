@@ -169,8 +169,19 @@ export const useStore = create<AppState>((set, get) => ({
             set({ streamingStatus: 'thinking', streamingContent: event.content || 'Processing...' });
             break;
 
+          case 'text_delta':
+            // Append token to streaming content (real-time streaming like Claude chat)
+            // Clear "Processing..." when starting to stream actual content
+            set((state) => ({
+              streamingStatus: 'streaming',
+              streamingContent: state.streamingStatus === 'thinking'
+                ? (event.content || '')
+                : state.streamingContent + (event.content || ''),
+            }));
+            break;
+
           case 'tool_call':
-            set({ streamingStatus: 'tool', currentTool: event.tool || null });
+            set({ streamingStatus: 'tool', currentTool: event.tool || null, streamingContent: '' });
             break;
 
           case 'tool_result':
@@ -179,7 +190,7 @@ export const useStore = create<AppState>((set, get) => ({
 
           case 'message':
             finalContent = event.content || '';
-            set({ streamingContent: finalContent });
+            set({ streamingStatus: 'streaming', streamingContent: finalContent });
             break;
 
           case 'done':
@@ -255,8 +266,19 @@ export const useStore = create<AppState>((set, get) => ({
             set({ streamingStatus: 'thinking', streamingContent: event.content || 'Processing...' });
             break;
 
+          case 'text_delta':
+            // Append token to streaming content (real-time streaming like Claude chat)
+            // Clear "Processing..." when starting to stream actual content
+            set((state) => ({
+              streamingStatus: 'streaming',
+              streamingContent: state.streamingStatus === 'thinking'
+                ? (event.content || '')
+                : state.streamingContent + (event.content || ''),
+            }));
+            break;
+
           case 'tool_call':
-            set({ streamingStatus: 'tool', currentTool: event.tool || null });
+            set({ streamingStatus: 'tool', currentTool: event.tool || null, streamingContent: '' });
             break;
 
           case 'tool_result':
@@ -270,7 +292,7 @@ export const useStore = create<AppState>((set, get) => ({
 
           case 'message':
             finalContent = event.content || '';
-            set({ streamingContent: finalContent });
+            set({ streamingStatus: 'streaming', streamingContent: finalContent });
             break;
 
           case 'done':
