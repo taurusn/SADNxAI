@@ -39,8 +39,11 @@ MAX_AGENTIC_ITERATIONS = 10
 
 
 def _sse_event(event_type: str, data: Dict[str, Any]) -> str:
-    """Format a Server-Sent Event."""
-    return f"data: {json.dumps({'type': event_type, **data})}\n\n"
+    """Format a Server-Sent Event with padding to force flush through proxies."""
+    event_json = json.dumps({'type': event_type, **data})
+    # Add 2KB padding as SSE comment to force Cloudflare/proxy flush
+    padding = ":" + " " * 2048 + "\n"
+    return f"data: {event_json}\n\n{padding}"
 
 
 async def _run_agentic_loop_streaming(
