@@ -166,41 +166,30 @@ export const useStore = create<AppState>((set, get) => ({
             break;
 
           case 'thinking':
-            // Don't clear content on subsequent iterations - just update status
-            set((state) => ({
-              streamingStatus: 'thinking',
-              // Only set "Processing..." if no content yet
-              streamingContent: state.streamingContent || 'Processing...',
-            }));
+            // New iteration starting - clear for fresh content
+            set({ streamingStatus: 'thinking', streamingContent: '' });
             break;
 
           case 'text_delta':
-            // Append token to streaming content (real-time streaming like Claude chat)
+            // Append token to streaming content
             set((state) => ({
               streamingStatus: 'streaming',
-              // If was showing "Processing...", replace it; otherwise append
-              streamingContent: state.streamingContent === 'Processing...'
-                ? (event.content || '')
-                : state.streamingContent + (event.content || ''),
+              streamingContent: state.streamingContent + (event.content || ''),
             }));
             break;
 
           case 'tool_call':
-            // Keep content, just update status to show tool execution
+            // Tool starting - keep content visible while tool runs
             set((state) => ({
               streamingStatus: 'tool',
               currentTool: event.tool || null,
-              streamingContent: state.streamingContent, // Preserve content!
+              streamingContent: state.streamingContent,
             }));
             break;
 
           case 'tool_result':
-            // Tool done, continue accumulating
-            set((state) => ({
-              streamingStatus: 'thinking',
-              currentTool: null,
-              streamingContent: state.streamingContent, // Preserve content!
-            }));
+            // Tool done - next iteration will clear via 'thinking' event
+            set({ streamingStatus: 'thinking', currentTool: null });
             break;
 
           case 'message':
@@ -279,25 +268,20 @@ export const useStore = create<AppState>((set, get) => ({
 
         switch (event.type) {
           case 'thinking':
-            // Don't clear content on subsequent iterations - just update status
-            set((state) => ({
-              streamingStatus: 'thinking',
-              streamingContent: state.streamingContent || 'Processing...',
-            }));
+            // New iteration - clear for fresh content
+            set({ streamingStatus: 'thinking', streamingContent: '' });
             break;
 
           case 'text_delta':
-            // Append token to streaming content (real-time streaming like Claude chat)
+            // Append token to streaming content
             set((state) => ({
               streamingStatus: 'streaming',
-              streamingContent: state.streamingContent === 'Processing...'
-                ? (event.content || '')
-                : state.streamingContent + (event.content || ''),
+              streamingContent: state.streamingContent + (event.content || ''),
             }));
             break;
 
           case 'tool_call':
-            // Keep content, just update status to show tool execution
+            // Tool starting - keep content visible
             set((state) => ({
               streamingStatus: 'tool',
               currentTool: event.tool || null,
@@ -306,20 +290,13 @@ export const useStore = create<AppState>((set, get) => ({
             break;
 
           case 'tool_result':
-            // Tool done, continue accumulating
-            set((state) => ({
-              streamingStatus: 'thinking',
-              currentTool: null,
-              streamingContent: state.streamingContent,
-            }));
+            // Tool done
+            set({ streamingStatus: 'thinking', currentTool: null });
             break;
 
           case 'pipeline_start':
           case 'pipeline_masking':
-            set((state) => ({
-              streamingStatus: 'pipeline',
-              streamingContent: state.streamingContent + '\n\n' + (event.message || 'Running pipeline...'),
-            }));
+            set({ streamingStatus: 'pipeline', streamingContent: event.message || 'Running pipeline...' });
             break;
 
           case 'message':
