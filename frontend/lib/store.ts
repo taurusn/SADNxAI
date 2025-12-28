@@ -3,7 +3,7 @@
  */
 
 import { create } from 'zustand';
-import { api, Session, SessionDetail, Message } from './api';
+import { api, Session, SessionDetail, Message, StreamEvent } from './api';
 
 interface AppState {
   // Sessions
@@ -16,6 +16,11 @@ interface AppState {
   isSending: boolean;
   error: string | null;
   pollingInterval: NodeJS.Timeout | null;
+
+  // Streaming State
+  streamingContent: string;
+  streamingStatus: string | null;
+  currentTool: string | null;
 
   // Actions
   loadSessions: () => Promise<void>;
@@ -41,6 +46,9 @@ export const useStore = create<AppState>((set, get) => ({
   isSending: false,
   error: null,
   pollingInterval: null,
+  streamingContent: '',
+  streamingStatus: null,
+  currentTool: null,
 
   // Load all sessions
   loadSessions: async () => {
@@ -156,7 +164,7 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  // Send chat message
+  // Send chat message with streaming
   sendMessage: async (message: string) => {
     const sessionId = get().currentSessionId;
     if (!sessionId) {
@@ -174,43 +182,77 @@ export const useStore = create<AppState>((set, get) => ({
           messages: [...currentSession.messages, userMessage],
         },
         isSending: true,
+        streamingContent: '',
+        streamingStatus: 'thinking',
+        currentTool: null,
         error: null,
       });
     }
 
     try {
-      const response = await api.sendMessage(sessionId, message);
+      let finalContent = '';
 
-      // Update session with response
-      const updatedSession = get().currentSession;
-      if (updatedSession) {
-        const assistantMessage: Message = {
-          role: 'assistant',
-          content: response.response,
-        };
+      await api.sendMessageStream(sessionId, message, (event: StreamEvent) => {
+        const session = get().currentSession;
+        if (!session) return;
 
-        set({
-          currentSession: {
-            ...updatedSession,
-            status: response.status,
-            classification: response.classification || updatedSession.classification,
-            messages: [...updatedSession.messages, assistantMessage],
-          },
-          isSending: false,
-        });
-      }
+        switch (event.type) {
+          case 'thinking':
+            set({ streamingStatus: 'thinking', streamingContent: event.content || 'Processing...' });
+            break;
 
-      // Reload full session to get complete state
+          case 'tool_call':
+            set({ streamingStatus: 'tool', currentTool: event.tool || null });
+            break;
+
+          case 'tool_result':
+            set({ currentTool: null });
+            break;
+
+          case 'pipeline_start':
+          case 'pipeline_masking':
+            set({ streamingStatus: 'pipeline', streamingContent: event.message || 'Running pipeline...' });
+            break;
+
+          case 'message':
+            finalContent = event.content || '';
+            set({ streamingContent: finalContent });
+            break;
+
+          case 'done':
+            // Add assistant message and update status
+            const assistantMessage: Message = {
+              role: 'assistant',
+              content: finalContent,
+            };
+
+            set({
+              currentSession: {
+                ...session,
+                status: event.status || session.status,
+                messages: [...session.messages, assistantMessage],
+              },
+              isSending: false,
+              streamingStatus: null,
+              streamingContent: '',
+              currentTool: null,
+            });
+            break;
+        }
+      });
+
+      // Reload full session to get complete state (validation results, etc)
       await get().selectSession(sessionId);
       await get().loadSessions();
 
-      // Start polling if session is now in processing state
-      const updatedSessionAfterReload = get().currentSession;
-      if (updatedSessionAfterReload && PROCESSING_STATES.includes(updatedSessionAfterReload.status)) {
-        get().startPolling();
-      }
     } catch (err) {
-      set({ error: (err as Error).message, isSending: false });
+      set({
+        error: (err as Error).message,
+        isSending: false,
+        streamingStatus: null,
+        streamingContent: '',
+        currentTool: null,
+      });
     }
   },
 

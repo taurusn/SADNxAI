@@ -6,7 +6,7 @@ import { api } from '@/lib/api';
 import MessageInput from './MessageInput';
 import FileUpload from './FileUpload';
 import ReactMarkdown from 'react-markdown';
-import { Download, FileText, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
+import { Download, FileText, CheckCircle, XCircle, AlertCircle, Loader2, Wrench, Sparkles } from 'lucide-react';
 
 const STATUS_BADGES: Record<string, { label: string; color: string; icon: any }> = {
   idle: { label: 'Ready', color: 'bg-gray-100 text-gray-600', icon: AlertCircle },
@@ -21,13 +21,13 @@ const STATUS_BADGES: Record<string, { label: string; color: string; icon: any }>
 };
 
 export default function ChatArea() {
-  const { currentSession, currentSessionId, isSending } = useStore();
+  const { currentSession, currentSessionId, isSending, streamingContent, streamingStatus, currentTool } = useStore();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll to bottom on new messages
+  // Auto-scroll to bottom on new messages or streaming content
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [currentSession?.messages]);
+  }, [currentSession?.messages, streamingContent]);
 
   if (!currentSession) {
     return (
@@ -125,15 +125,40 @@ export default function ChatArea() {
                 </div>
               ))}
 
-            {/* Loading indicator */}
+            {/* Streaming indicator */}
             {isSending && (
               <div className="flex justify-start message-enter">
-                <div className="bg-white border border-gray-200 rounded-2xl rounded-bl-md px-4 py-3 shadow-sm">
-                  <div className="flex gap-1">
-                    <span className="w-2 h-2 bg-gray-400 rounded-full loading-dot" />
-                    <span className="w-2 h-2 bg-gray-400 rounded-full loading-dot" />
-                    <span className="w-2 h-2 bg-gray-400 rounded-full loading-dot" />
-                  </div>
+                <div className="bg-white border border-gray-200 rounded-2xl rounded-bl-md px-4 py-3 shadow-sm max-w-2xl">
+                  {streamingStatus === 'thinking' && (
+                    <div className="flex items-center gap-2 text-primary">
+                      <Sparkles className="w-4 h-4 animate-pulse" />
+                      <span className="text-sm">{streamingContent || 'Thinking...'}</span>
+                    </div>
+                  )}
+                  {streamingStatus === 'tool' && currentTool && (
+                    <div className="flex items-center gap-2 text-amber-600">
+                      <Wrench className="w-4 h-4 animate-spin" />
+                      <span className="text-sm">Executing: {currentTool}</span>
+                    </div>
+                  )}
+                  {streamingStatus === 'pipeline' && (
+                    <div className="flex items-center gap-2 text-purple-600">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span className="text-sm">{streamingContent || 'Running pipeline...'}</span>
+                    </div>
+                  )}
+                  {!streamingStatus && (
+                    <div className="flex gap-1">
+                      <span className="w-2 h-2 bg-gray-400 rounded-full loading-dot" />
+                      <span className="w-2 h-2 bg-gray-400 rounded-full loading-dot" />
+                      <span className="w-2 h-2 bg-gray-400 rounded-full loading-dot" />
+                    </div>
+                  )}
+                  {streamingContent && streamingStatus !== 'thinking' && streamingStatus !== 'pipeline' && (
+                    <div className="mt-2 prose prose-sm max-w-none">
+                      <ReactMarkdown>{streamingContent}</ReactMarkdown>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

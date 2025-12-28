@@ -7,9 +7,9 @@ import os
 import json
 import pandas as pd
 from fastapi import APIRouter, HTTPException, UploadFile, File
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, AsyncGenerator
 
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -36,6 +36,124 @@ pipeline_executor = PipelineExecutor()
 
 # Maximum iterations for agentic loop (safety limit)
 MAX_AGENTIC_ITERATIONS = 10
+
+
+def _sse_event(event_type: str, data: Dict[str, Any]) -> str:
+    """Format a Server-Sent Event."""
+    return f"data: {json.dumps({'type': event_type, **data})}\n\n"
+
+
+async def _run_agentic_loop_streaming(
+    session: Session,
+    messages: List[Dict[str, Any]],
+    session_context: Dict[str, Any],
+    tool_executor: "ToolExecutor",
+    terminal_tools: Optional[List[str]] = None
+) -> AsyncGenerator[str, None]:
+    """
+    Streaming version of agentic loop - yields SSE events as they happen.
+    """
+    terminal_tools = terminal_tools or []
+    iteration = 0
+
+    while iteration < MAX_AGENTIC_ITERATIONS:
+        iteration += 1
+        print(f"[Agentic Loop] Iteration {iteration}")
+
+        # Yield thinking event
+        yield _sse_event("thinking", {"content": f"Processing... (iteration {iteration})"})
+
+        # Call LLM
+        llm_response = await llm_adapter.chat_async(messages, session_context)
+        content = llm_response.get("content", "")
+        tool_calls_raw = llm_response.get("tool_calls")
+
+        # If no tool calls, we're done - yield final message
+        if not tool_calls_raw:
+            print(f"[Agentic Loop] No tool calls, returning final response")
+            final_msg = Message(role=MessageRole.ASSISTANT, content=content)
+            session.messages.append(final_msg)
+            yield _sse_event("message", {"content": content})
+            break
+
+        print(f"[Agentic Loop] Processing {len(tool_calls_raw)} tool call(s)")
+
+        # Build ToolCall objects
+        tool_calls = []
+        for tc in tool_calls_raw:
+            tool_calls.append(ToolCall(
+                id=tc["id"],
+                type=tc["type"],
+                function=tc["function"]
+            ))
+
+        # Add assistant message WITH tool calls to session
+        assistant_msg = Message(
+            role=MessageRole.ASSISTANT,
+            content=content,
+            tool_calls=tool_calls
+        )
+        session.messages.append(assistant_msg)
+
+        # Also add to messages list for next LLM call
+        messages.append({
+            "role": "assistant",
+            "content": content,
+            "tool_calls": tool_calls_raw
+        })
+
+        # Check if any terminal tool is being called
+        should_break = False
+
+        # Execute each tool and add results
+        for tc in tool_calls_raw:
+            tool_name = tc["function"]["name"]
+            args = json.loads(tc["function"]["arguments"])
+
+            # Yield tool_call event
+            yield _sse_event("tool_call", {"tool": tool_name, "args": args})
+
+            # Check if this is a terminal tool
+            if tool_name in terminal_tools:
+                print(f"[Agentic Loop] Terminal tool called: {tool_name}")
+                # Yield terminal tool info and break
+                yield _sse_event("terminal_tool", {"tool": tool_name, "args": args, "tool_call": tc})
+                should_break = True
+                continue
+
+            print(f"[Agentic Loop] Executing tool: {tool_name}")
+            result = await tool_executor.execute(tool_name, args)
+
+            # Yield tool_result event
+            yield _sse_event("tool_result", {"tool": tool_name, "success": result.get("success", False)})
+
+            # Add tool result to session
+            tool_result_msg = Message(
+                role=MessageRole.TOOL,
+                content=json.dumps(result),
+                tool_call_id=tc["id"]
+            )
+            session.messages.append(tool_result_msg)
+
+            # Also add to messages list for next LLM call
+            messages.append({
+                "role": "tool",
+                "content": json.dumps(result),
+                "tool_call_id": tc["id"]
+            })
+
+            # Track classification updates
+            if tool_name == "classify_columns" and result.get("success"):
+                session.status = SessionStatus.PROPOSED
+                session_context = _build_session_context(session)
+                print(f"[Agentic Loop] Classification updated, status -> PROPOSED")
+
+        if should_break:
+            print(f"[Agentic Loop] Breaking due to terminal tool")
+            break
+
+    if iteration >= MAX_AGENTIC_ITERATIONS:
+        print(f"[Agentic Loop] Warning: Hit max iterations ({MAX_AGENTIC_ITERATIONS})")
 
 
 async def _run_agentic_loop(
@@ -395,105 +513,127 @@ async def upload_file(session_id: str, file: UploadFile = File(...)):
 # Chat
 # ============================================================
 
-@router.post("/sessions/{session_id}/chat", response_model=ChatResponse)
+@router.post("/sessions/{session_id}/chat")
 async def chat(session_id: str, request: ChatRequest):
-    """Send a chat message"""
+    """Send a chat message with SSE streaming response"""
     session = session_manager.get_session(session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    # Add user message
-    user_msg = Message(role=MessageRole.USER, content=request.message)
-    session.messages.append(user_msg)
+    async def event_stream():
+        nonlocal session
 
-    # Check for approval
-    conversation = ConversationManager(session)
-    if conversation.detect_approval(request.message):
-        if session.classification is not None:
-            session.status = SessionStatus.APPROVED
+        # Add user message
+        user_msg = Message(role=MessageRole.USER, content=request.message)
+        session.messages.append(user_msg)
 
-    # Get messages for LLM
-    messages = conversation.get_messages_for_llm()
+        # Check for approval
+        conversation = ConversationManager(session)
+        if conversation.detect_approval(request.message):
+            if session.classification is not None:
+                session.status = SessionStatus.APPROVED
 
-    # Build session context for LLM
-    session_context = _build_session_context(session)
+        # Get messages for LLM
+        messages = conversation.get_messages_for_llm()
 
-    # Create tool executor
-    tool_executor = ToolExecutor(session)
+        # Build session context for LLM
+        session_context = _build_session_context(session)
 
-    # Run agentic loop with execute_pipeline as terminal tool
-    # (execute_pipeline needs special async handling)
-    result = await _run_agentic_loop(
-        session, messages, session_context, tool_executor,
-        terminal_tools=["execute_pipeline"]
-    )
+        # Create tool executor
+        tool_executor = ToolExecutor(session)
 
-    ai_response_text = result["content"]
-    classification_updated = result.get("classification_updated")
+        # Track terminal tool info
+        terminal_tool_info = None
+        last_content = ""
 
-    # Handle execute_pipeline if it was called
-    if result.get("terminal_tool") == "execute_pipeline":
-        terminal_info = result["terminal_tool_result"]
-        tc = terminal_info["tool_call"]
+        # Stream through the agentic loop
+        async for event in _run_agentic_loop_streaming(
+            session, messages, session_context, tool_executor,
+            terminal_tools=["execute_pipeline"]
+        ):
+            yield event
 
-        # First execute the tool to validate
-        args = terminal_info["args"]
-        tool_result = await tool_executor.execute("execute_pipeline", args)
+            # Parse event to track terminal tool
+            try:
+                event_data = json.loads(event.replace("data: ", "").strip())
+                if event_data.get("type") == "terminal_tool":
+                    terminal_tool_info = event_data
+                if event_data.get("type") == "message":
+                    last_content = event_data.get("content", "")
+            except:
+                pass
 
-        # Add tool result message
-        tool_result_msg = Message(
-            role=MessageRole.TOOL,
-            content=json.dumps(tool_result),
-            tool_call_id=tc["id"]
-        )
-        session.messages.append(tool_result_msg)
+        # Handle execute_pipeline if it was called
+        if terminal_tool_info and terminal_tool_info.get("tool") == "execute_pipeline":
+            tc = terminal_tool_info["tool_call"]
+            args = terminal_tool_info["args"]
 
-        if tool_result.get("success"):
-            session.status = SessionStatus.MASKING
+            yield _sse_event("pipeline_start", {"message": "Starting anonymization pipeline..."})
 
-            # Clean up old output/report files before retry
-            if session.output_path and os.path.exists(session.output_path):
-                os.remove(session.output_path)
-                session.output_path = None
-            if session.report_path and os.path.exists(session.report_path):
-                os.remove(session.report_path)
-                session.report_path = None
-            session.validation_result = None
+            # Execute the tool
+            tool_result = await tool_executor.execute("execute_pipeline", args)
 
-            session_manager.update_session(session)
+            # Add tool result message
+            tool_result_msg = Message(
+                role=MessageRole.TOOL,
+                content=json.dumps(tool_result),
+                tool_call_id=tc["id"]
+            )
+            session.messages.append(tool_result_msg)
 
-            # Execute pipeline asynchronously
-            pipeline_result = await pipeline_executor.execute(session)
+            if tool_result.get("success"):
+                session.status = SessionStatus.MASKING
 
-            if pipeline_result.get("error"):
-                session.status = SessionStatus.FAILED
-                ai_response_text = f"Pipeline execution failed: {pipeline_result['error']}"
-            else:
-                if pipeline_result.get("validation_result"):
-                    session.validation_result = pipeline_result["validation_result"]
-                    session.output_path = pipeline_result.get("output_path")
-                    session.report_path = pipeline_result.get("report_path")
+                # Clean up old output/report files
+                if session.output_path and os.path.exists(session.output_path):
+                    os.remove(session.output_path)
+                    session.output_path = None
+                if session.report_path and os.path.exists(session.report_path):
+                    os.remove(session.report_path)
+                    session.report_path = None
+                session.validation_result = None
 
-                    if pipeline_result["validation_result"].passed:
-                        session.status = SessionStatus.COMPLETED
-                        ai_response_text = "Anonymization complete! Validation passed. You can now download the anonymized CSV and privacy report."
-                    else:
-                        session.status = SessionStatus.FAILED
-                        failed = pipeline_result["validation_result"].failed_metrics
-                        ai_response_text = f"Validation failed for metrics: {', '.join(failed)}. You can still download the anonymized CSV and report. Would you like to adjust the generalization levels or thresholds and try again?"
+                session_manager.update_session(session)
 
-    # Update status for discussion if no tools were called
-    if result["iterations"] == 1 and not result.get("terminal_tool"):
-        # If LLM just responded without tools
-        if session.status == SessionStatus.PROPOSED:
-            session.status = SessionStatus.DISCUSSING
+                yield _sse_event("pipeline_masking", {"message": "Applying anonymization techniques..."})
 
-    session_manager.update_session(session)
+                # Execute pipeline
+                pipeline_result = await pipeline_executor.execute(session)
 
-    return ChatResponse(
-        response=ai_response_text or "I'm processing your request...",
-        status=session.status,
-        classification=classification_updated
+                if pipeline_result.get("error"):
+                    session.status = SessionStatus.FAILED
+                    yield _sse_event("message", {"content": f"Pipeline execution failed: {pipeline_result['error']}"})
+                else:
+                    if pipeline_result.get("validation_result"):
+                        session.validation_result = pipeline_result["validation_result"]
+                        session.output_path = pipeline_result.get("output_path")
+                        session.report_path = pipeline_result.get("report_path")
+
+                        if pipeline_result["validation_result"].passed:
+                            session.status = SessionStatus.COMPLETED
+                            yield _sse_event("message", {"content": "Anonymization complete! Validation passed. You can now download the anonymized CSV and privacy report."})
+                        else:
+                            session.status = SessionStatus.FAILED
+                            failed = pipeline_result["validation_result"].failed_metrics
+                            yield _sse_event("message", {"content": f"Validation failed for metrics: {', '.join(failed)}. You can still download the anonymized CSV and report. Would you like to adjust the generalization levels or thresholds and try again?"})
+
+        session_manager.update_session(session)
+
+        # Final done event with status
+        yield _sse_event("done", {
+            "status": session.status.value,
+            "has_classification": session.classification is not None,
+            "has_validation": session.validation_result is not None
+        })
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
     )
 
 

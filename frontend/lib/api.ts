@@ -46,6 +46,18 @@ export interface ChatResponse {
   classification?: Classification;
 }
 
+export interface StreamEvent {
+  type: 'thinking' | 'tool_call' | 'tool_result' | 'message' | 'terminal_tool' | 'pipeline_start' | 'pipeline_masking' | 'done';
+  content?: string;
+  tool?: string;
+  args?: any;
+  success?: boolean;
+  status?: string;
+  message?: string;
+  has_classification?: boolean;
+  has_validation?: boolean;
+}
+
 export interface SessionDetail {
   id: string;
   title: string;
@@ -128,7 +140,56 @@ class ApiClient {
     return response.json();
   }
 
-  // Chat
+  // Chat with SSE streaming
+  async sendMessageStream(
+    sessionId: string,
+    message: string,
+    onEvent: (event: StreamEvent) => void
+  ): Promise<void> {
+    const url = `${this.baseUrl}/sessions/${sessionId}/chat`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ message }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
+      throw new Error(error.detail || `HTTP ${response.status}`);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error('No response body');
+    }
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try {
+            const data = JSON.parse(line.slice(6));
+            onEvent(data as StreamEvent);
+          } catch (e) {
+            console.error('Failed to parse SSE event:', line);
+          }
+        }
+      }
+    }
+  }
+
+  // Legacy non-streaming chat (kept for compatibility)
   async sendMessage(sessionId: string, message: string): Promise<ChatResponse> {
     return this.request(`/sessions/${sessionId}/chat`, {
       method: 'POST',
