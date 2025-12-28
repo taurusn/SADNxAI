@@ -232,29 +232,46 @@ class LLMAdapter:
             return
 
         if self.ollama_adapter:
-            # Track if we're inside a tool_call block to filter it out
-            in_tool_block = False
+            # Track if we're inside a code block to filter out tool calls
+            in_code_block = False
             buffer = ""
+            emitted_length = 0  # Track what we've already emitted
 
             async for chunk in self.ollama_adapter.chat_stream(messages, session_context):
                 if chunk["type"] == "token":
                     token = chunk["content"]
                     buffer += token
 
-                    # Check if entering tool_call block
-                    if "```tool_call" in buffer or "```json" in buffer:
-                        in_tool_block = True
+                    # Check for code block markers (```)
+                    backtick_count = buffer.count("```")
 
-                    # Check if exiting tool_call block
-                    if in_tool_block and buffer.count("```") >= 2:
-                        # Found closing ```, reset
-                        in_tool_block = False
-                        buffer = ""
-                        continue
+                    if backtick_count > 0:
+                        if not in_code_block and backtick_count >= 1:
+                            # Entering a code block - emit everything before it
+                            first_block = buffer.find("```")
+                            text_before = buffer[:first_block]
+                            new_text = text_before[emitted_length:]
+                            if new_text.strip():
+                                yield {"type": "token", "content": new_text}
+                            in_code_block = True
+                            emitted_length = first_block
 
-                    # Only emit tokens if not in tool block
-                    if not in_tool_block:
-                        yield chunk
+                        if in_code_block and backtick_count >= 2:
+                            # Exiting code block
+                            # Find the second ```
+                            first_pos = buffer.find("```")
+                            second_pos = buffer.find("```", first_pos + 3)
+                            if second_pos != -1:
+                                in_code_block = False
+                                # Skip the code block content, continue after closing ```
+                                emitted_length = second_pos + 3
+                    else:
+                        # No code block markers, emit new content
+                        if not in_code_block:
+                            new_text = buffer[emitted_length:]
+                            if new_text:
+                                yield {"type": "token", "content": new_text}
+                                emitted_length = len(buffer)
                 else:
                     # Pass through done events
                     yield chunk
