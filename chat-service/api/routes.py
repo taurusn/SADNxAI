@@ -586,7 +586,9 @@ async def chat(session_id: str, request: ChatRequest):
 
             # Parse event to track terminal tool
             try:
-                event_data = json.loads(event.replace("data: ", "").strip())
+                # Extract JSON from SSE format: "data: {json}\n\n:(padding)"
+                event_str = event.replace("data: ", "").split("\n\n")[0].strip()
+                event_data = json.loads(event_str)
                 if event_data.get("type") == "terminal_tool":
                     terminal_tool_info = event_data
                 if event_data.get("type") == "message":

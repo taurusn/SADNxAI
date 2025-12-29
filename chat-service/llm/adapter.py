@@ -239,6 +239,7 @@ class LLMAdapter:
             in_code_block = False
             in_json_block = False
             json_brace_count = 0
+            code_block_start = -1
 
             async for chunk in self.ollama_adapter.chat_stream(messages, session_context):
                 if chunk["type"] == "token":
@@ -246,31 +247,37 @@ class LLMAdapter:
                     buffer += token
 
                     # --- Filter 1: Code blocks (```) ---
-                    backtick_count = buffer.count("```")
-                    if backtick_count > 0:
-                        if not in_code_block and backtick_count >= 1:
-                            first_block = buffer.find("```")
-                            text_before = buffer[:first_block]
-                            new_text = text_before[emitted_length:]
-                            # Filter out any JSON in the text before code block
-                            new_text = re.sub(r'\{"tool"[^}]*\}', '', new_text)
-                            new_text = re.sub(r'\{"arguments"[^}]*\}', '', new_text)
-                            if new_text.strip():
-                                yield {"type": "token", "content": new_text}
-                            in_code_block = True
-                            emitted_length = first_block
+                    # Look for code block markers in the unemitted portion
+                    search_start = max(emitted_length, 0)
 
-                        if in_code_block and backtick_count >= 2:
-                            first_pos = buffer.find("```")
-                            second_pos = buffer.find("```", first_pos + 3)
-                            if second_pos != -1:
-                                in_code_block = False
-                                emitted_length = second_pos + 3
-                        continue
+                    if not in_code_block:
+                        # Look for opening ```
+                        code_start = buffer.find("```", search_start)
+                        if code_start != -1:
+                            # Emit text before the code block
+                            text_before = buffer[emitted_length:code_start]
+                            if text_before.strip():
+                                # Clean any stray JSON from text
+                                text_before = re.sub(r'\{"tool"[^}]*\}', '', text_before)
+                                if text_before.strip():
+                                    yield {"type": "token", "content": text_before}
+                            in_code_block = True
+                            code_block_start = code_start
+                            emitted_length = code_start
+
+                    if in_code_block:
+                        # Look for closing ``` (must be after the opening)
+                        close_pos = buffer.find("```", code_block_start + 3)
+                        if close_pos != -1:
+                            # Found closing, skip entire code block
+                            in_code_block = False
+                            emitted_length = close_pos + 3
+                            code_block_start = -1
+                        continue  # Don't emit while in code block
 
                     # --- Filter 2: Raw JSON objects {"tool": ...} ---
-                    # Check for start of JSON tool call
-                    if not in_json_block and '{"tool"' in buffer[emitted_length:]:
+                    if not in_json_block:
+                        # Look for JSON tool call pattern
                         json_start = buffer.find('{"tool"', emitted_length)
                         if json_start != -1:
                             # Emit text before JSON
@@ -281,8 +288,8 @@ class LLMAdapter:
                             emitted_length = json_start
                             json_brace_count = 0
 
-                    # Track braces to find end of JSON
                     if in_json_block:
+                        # Track braces to find end of JSON
                         for i, c in enumerate(buffer[emitted_length:]):
                             if c == '{':
                                 json_brace_count += 1
@@ -293,18 +300,33 @@ class LLMAdapter:
                                     in_json_block = False
                                     emitted_length = emitted_length + i + 1
                                     break
-                        continue
+                        continue  # Don't emit while in JSON block
 
                     # --- Emit clean content ---
                     if not in_code_block and not in_json_block:
                         new_text = buffer[emitted_length:]
-                        # Extra safety: remove any JSON-like patterns
-                        new_text = re.sub(r'\{[^{}]*"tool"[^{}]*\}', '', new_text)
-                        if new_text and not new_text.startswith('{"'):
+                        # Only hold back if we might be starting a JSON tool call
+                        # Check if buffer ends with partial '{"tool' pattern
+                        partial_json = False
+                        for partial in ['{"', '{"t', '{"to', '{"too', '{"tool']:
+                            if new_text.endswith(partial):
+                                # Hold back this partial, don't emit yet
+                                new_text = new_text[:-len(partial)]
+                                partial_json = True
+                                break
+
+                        if new_text:
                             yield {"type": "token", "content": new_text}
-                            emitted_length = len(buffer)
+                            emitted_length = len(buffer) - (len(partial) if partial_json else 0)
                 else:
                     # Pass through done events
+                    # But first emit any remaining buffered content
+                    if buffer and emitted_length < len(buffer) and not in_code_block and not in_json_block:
+                        remaining = buffer[emitted_length:]
+                        # Final cleanup of any JSON patterns
+                        remaining = re.sub(r'\{"tool"[^}]*\}', '', remaining)
+                        if remaining.strip():
+                            yield {"type": "token", "content": remaining}
                     yield chunk
             return
 

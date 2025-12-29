@@ -181,6 +181,7 @@ export const useStore = create<AppState>((set, get) => ({
             break;
 
           case 'tool_call':
+          case 'terminal_tool':
             // Tool starting - save current content as pending message for this iteration
             set((state) => ({
               streamingStatus: 'tool',
@@ -288,6 +289,7 @@ export const useStore = create<AppState>((set, get) => ({
             break;
 
           case 'tool_call':
+          case 'terminal_tool':
             // Tool starting - save current content as pending message
             set((state) => ({
               streamingStatus: 'tool',
