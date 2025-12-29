@@ -21,7 +21,7 @@ const STATUS_BADGES: Record<string, { label: string; color: string; icon: any }>
 };
 
 export default function ChatArea() {
-  const { currentSession, currentSessionId, isSending, streamingContent, streamingStatus, currentTool } = useStore();
+  const { currentSession, currentSessionId, isSending, streamingContent, streamingStatus, currentTool, pendingMessages } = useStore();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom on new messages or streaming content
@@ -125,11 +125,22 @@ export default function ChatArea() {
                 </div>
               ))}
 
-            {/* Streaming indicator */}
+            {/* Pending messages from completed iterations */}
+            {isSending && pendingMessages.map((content, idx) => (
+              <div key={`pending-${idx}`} className="flex justify-start message-enter">
+                <div className="bg-white border border-gray-200 rounded-2xl rounded-bl-md px-4 py-3 shadow-sm max-w-2xl">
+                  <div className="prose prose-sm max-w-none">
+                    <ReactMarkdown>{content}</ReactMarkdown>
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            {/* Current streaming / status indicator */}
             {isSending && (
               <div className="flex justify-start message-enter">
                 <div className="bg-white border border-gray-200 rounded-2xl rounded-bl-md px-4 py-3 shadow-sm max-w-2xl">
-                  {/* Streamed content */}
+                  {/* Currently streaming content */}
                   {streamingContent && (
                     <div className="prose prose-sm max-w-none">
                       <ReactMarkdown>{streamingContent}</ReactMarkdown>
@@ -139,7 +150,7 @@ export default function ChatArea() {
                     </div>
                   )}
 
-                  {/* Status indicators when no content yet */}
+                  {/* Thinking indicator */}
                   {!streamingContent && streamingStatus === 'thinking' && (
                     <div className="flex items-center gap-2 text-primary">
                       <Sparkles className="w-4 h-4 animate-pulse" />
@@ -149,7 +160,7 @@ export default function ChatArea() {
 
                   {/* Tool execution indicator */}
                   {streamingStatus === 'tool' && currentTool && (
-                    <div className="flex items-center gap-2 text-amber-600 mt-2 pt-2 border-t border-gray-100">
+                    <div className="flex items-center gap-2 text-amber-600">
                       <Wrench className="w-4 h-4 animate-spin" />
                       <span className="text-sm">Executing: {currentTool}</span>
                     </div>
@@ -163,8 +174,8 @@ export default function ChatArea() {
                     </div>
                   )}
 
-                  {/* Loading dots when nothing else */}
-                  {!streamingStatus && !streamingContent && (
+                  {/* Loading dots */}
+                  {!streamingStatus && !streamingContent && pendingMessages.length === 0 && (
                     <div className="flex gap-1">
                       <span className="w-2 h-2 bg-gray-400 rounded-full loading-dot" />
                       <span className="w-2 h-2 bg-gray-400 rounded-full loading-dot" />

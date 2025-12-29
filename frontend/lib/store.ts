@@ -21,6 +21,7 @@ interface AppState {
   streamingContent: string;
   streamingStatus: string | null;
   currentTool: string | null;
+  pendingMessages: string[];  // Messages from completed iterations during streaming
 
   // Actions
   loadSessions: () => Promise<void>;
@@ -49,6 +50,7 @@ export const useStore = create<AppState>((set, get) => ({
   streamingContent: '',
   streamingStatus: null,
   currentTool: null,
+  pendingMessages: [],
 
   // Load all sessions
   loadSessions: async () => {
@@ -179,16 +181,20 @@ export const useStore = create<AppState>((set, get) => ({
             break;
 
           case 'tool_call':
-            // Tool starting - keep content visible while tool runs
+            // Tool starting - save current content as pending message for this iteration
             set((state) => ({
               streamingStatus: 'tool',
               currentTool: event.tool || null,
-              streamingContent: state.streamingContent,
+              // Save streamed content as a pending message (iteration complete)
+              pendingMessages: state.streamingContent
+                ? [...state.pendingMessages, state.streamingContent]
+                : state.pendingMessages,
+              streamingContent: '', // Clear for next iteration
             }));
             break;
 
           case 'tool_result':
-            // Tool done - next iteration will clear via 'thinking' event
+            // Tool done - ready for next iteration
             set({ streamingStatus: 'thinking', currentTool: null });
             break;
 
@@ -214,6 +220,7 @@ export const useStore = create<AppState>((set, get) => ({
               streamingStatus: null,
               streamingContent: '',
               currentTool: null,
+              pendingMessages: [], // Clear pending messages
             });
             break;
         }
@@ -281,11 +288,14 @@ export const useStore = create<AppState>((set, get) => ({
             break;
 
           case 'tool_call':
-            // Tool starting - keep content visible
+            // Tool starting - save current content as pending message
             set((state) => ({
               streamingStatus: 'tool',
               currentTool: event.tool || null,
-              streamingContent: state.streamingContent,
+              pendingMessages: state.streamingContent
+                ? [...state.pendingMessages, state.streamingContent]
+                : state.pendingMessages,
+              streamingContent: '',
             }));
             break;
 
@@ -321,6 +331,7 @@ export const useStore = create<AppState>((set, get) => ({
               streamingStatus: null,
               streamingContent: '',
               currentTool: null,
+              pendingMessages: [],
             });
             break;
         }
