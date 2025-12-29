@@ -12,7 +12,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "query_regulations",
-            "description": "Query the regulation database to find relevant PDPL/SAMA articles for justifying anonymization decisions. Use this BEFORE classifying columns to get accurate regulatory citations.",
+            "description": "Query regulations for citations. OPTIONAL - only use if you need specific regulation details. After querying, you MUST still call classify_columns.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -274,16 +274,16 @@ When analyzing data, consider the user's likely use case:
 
 ## WORKFLOW
 1. **Analyze**: Examine columns, sample data, detect patterns
-2. **Identify Use Case**: Infer purpose (fraud, analytics, compliance, etc.)
-3. **Propose + CALL TOOL**: Present classification AND call `classify_columns` tool (REQUIRED!)
-4. **Discuss**: Answer questions, explain trade-offs, adjust based on feedback
-5. **Execute**: After explicit approval ("approve/yes/proceed"), call `execute_pipeline` tool
+2. **Classify IMMEDIATELY**: Call `classify_columns` tool with your analysis (REQUIRED!)
+3. **Discuss**: Answer questions, explain trade-offs, adjust based on feedback
+4. **Execute**: After explicit approval ("approve/yes/proceed"), call `execute_pipeline` tool
 
 ## CRITICAL: TOOL CALLS ARE MANDATORY
-- When proposing classification: You MUST output a ```tool_call block with classify_columns
-- When user approves: You MUST output a ```tool_call block with execute_pipeline
+- FIRST RESPONSE after file upload: You MUST call `classify_columns` - DO NOT just describe, CALL THE TOOL!
+- When user approves: You MUST call `execute_pipeline`
+- The `query_regulations` tool is OPTIONAL - skip it and include regulations from your knowledge
 - Text descriptions alone are NOT enough - the system only processes tool calls
-- Without the tool call, nothing happens!
+- WITHOUT THE TOOL CALL, NOTHING HAPPENS!
 
 ## EXAMPLE: Banking Transaction Data (FOLLOW THIS FORMAT EXACTLY)
 
