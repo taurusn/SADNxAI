@@ -55,6 +55,12 @@ class GeneralizationConfig(BaseModel):
 # Classification
 # ============================================================
 
+class RegulationRef(BaseModel):
+    """Reference to a specific regulation for a column"""
+    regulation_id: str = Field(description="Regulation ID (e.g., 'PDPL-Art-11', 'SAMA-2.6.2')")
+    relevance: str = Field(description="Why this regulation applies to this column")
+
+
 class Classification(BaseModel):
     """Column classification result from AI analysis"""
     direct_identifiers: list[str] = Field(default_factory=list, description="Columns to suppress")
@@ -64,6 +70,7 @@ class Classification(BaseModel):
     sensitive_attributes: list[str] = Field(default_factory=list, description="Sensitive columns to keep")
     recommended_techniques: dict[str, MaskingTechnique] = Field(default_factory=dict)
     reasoning: dict[str, str] = Field(default_factory=dict, description="AI reasoning per column")
+    regulation_refs: dict[str, list[RegulationRef]] = Field(default_factory=dict, description="Per-column regulation references")
     generalization_config: GeneralizationConfig = Field(default_factory=GeneralizationConfig)
 
 

@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 
 from shared.models import (
     Session, Classification, GeneralizationConfig,
-    MaskingTechnique
+    MaskingTechnique, RegulationRef
 )
 
 
@@ -90,6 +90,18 @@ class ToolExecutor:
             except ValueError:
                 recommended_techniques[col] = MaskingTechnique.KEEP
 
+        # Convert regulation_refs to RegulationRef objects
+        raw_regulation_refs = args.get("regulation_refs", {})
+        regulation_refs = {}
+        for col, refs in raw_regulation_refs.items():
+            regulation_refs[col] = [
+                RegulationRef(
+                    regulation_id=ref.get("regulation_id", ""),
+                    relevance=ref.get("relevance", "")
+                )
+                for ref in refs if isinstance(ref, dict)
+            ]
+
         # Build classification
         classification = Classification(
             direct_identifiers=args.get("direct_identifiers", []),
@@ -99,14 +111,14 @@ class ToolExecutor:
             sensitive_attributes=args.get("sensitive_attributes", []),
             recommended_techniques=recommended_techniques,
             reasoning=args.get("reasoning", {}),
+            regulation_refs=regulation_refs,
             generalization_config=gen_config
         )
 
         # Update session
         self.session.classification = classification
 
-        # Extract regulation references (new field)
-        regulation_refs = args.get("regulation_refs", {})
+        # Use already extracted values for DB save
         reasoning = args.get("reasoning", {})
 
         # Build classifications list for PostgreSQL
@@ -136,7 +148,7 @@ class ToolExecutor:
                     "classification_type_id": type_id,
                     "reasoning": reasoning.get(col, ""),
                     "generalization_level": gen_level,
-                    "regulation_refs": regulation_refs.get(col, [])
+                    "regulation_refs": raw_regulation_refs.get(col, [])
                 })
 
         # Save to PostgreSQL

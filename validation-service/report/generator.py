@@ -275,25 +275,51 @@ def generate_pdf_report(
         if classification:
             class_data = [["Column", "Type", "Technique", "Regulation"]]
 
+            # Get regulation_refs from classification (may be empty for old sessions)
+            reg_refs = classification.get('regulation_refs', {})
+
+            # Default regulations by type (fallback if no specific refs)
+            default_regs = {
+                'direct': "PDPL Art.11,15",
+                'quasi': "PDPL Art.11,17",
+                'linkage': "PDPL Art.19",
+                'date': "PDPL Art.11",
+                'sensitive': "PDPL Art.5,24"
+            }
+
+            def get_reg_string(col: str, default_type: str) -> str:
+                """Get regulation string for a column, using refs if available"""
+                col_refs = reg_refs.get(col, [])
+                if col_refs:
+                    reg_ids = []
+                    for ref in col_refs:
+                        if isinstance(ref, dict):
+                            reg_ids.append(ref.get('regulation_id', ''))
+                        elif hasattr(ref, 'regulation_id'):
+                            reg_ids.append(ref.regulation_id)
+                    if reg_ids:
+                        return ', '.join(reg_ids[:3])
+                return default_regs.get(default_type, '-')
+
             # Add direct identifiers
             for col in classification.get('direct_identifiers', []):
-                class_data.append([col, "Direct Identifier", "Suppressed", "PDPL Art.11,15"])
+                class_data.append([col, "Direct Identifier", "Suppressed", get_reg_string(col, 'direct')])
 
             # Add quasi identifiers
             for col in classification.get('quasi_identifiers', []):
-                class_data.append([col, "Quasi-Identifier", "Generalized", "PDPL Art.11,17"])
+                class_data.append([col, "Quasi-Identifier", "Generalized", get_reg_string(col, 'quasi')])
 
             # Add linkage identifiers
             for col in classification.get('linkage_identifiers', []):
-                class_data.append([col, "Linkage Identifier", "Pseudonymized", "PDPL Art.19"])
+                class_data.append([col, "Linkage Identifier", "Pseudonymized", get_reg_string(col, 'linkage')])
 
             # Add date columns
             for col in classification.get('date_columns', []):
-                class_data.append([col, "Date Column", "Date Shifted", "PDPL Art.11"])
+                class_data.append([col, "Date Column", "Date Shifted", get_reg_string(col, 'date')])
 
             # Add sensitive attributes
             for col in classification.get('sensitive_attributes', []):
-                class_data.append([col, "Sensitive Attribute", "Kept", "PDPL Art.5,24"])
+                class_data.append([col, "Sensitive Attribute", "Kept", get_reg_string(col, 'sensitive')])
 
             if len(class_data) > 1:
                 class_table = Table(class_data, colWidths=[4*cm, 3.5*cm, 3*cm, 3*cm])
