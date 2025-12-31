@@ -437,14 +437,47 @@ class OllamaAdapter:
         """
         import re
 
-        # Look for ```tool_call blocks
-        pattern = r'```tool_call\s*\n?(.*?)\n?```'
-        matches = re.findall(pattern, content, re.DOTALL)
+        matches = []
 
+        # Pattern 1: ```tool_call blocks (preferred)
+        pattern1 = r'```tool_call\s*\n?(.*?)\n?```'
+        matches.extend(re.findall(pattern1, content, re.DOTALL))
+
+        # Pattern 2: ```json blocks with "tool" key
         if not matches:
-            # Also try JSON blocks with "tool" key
-            pattern = r'```(?:json)?\s*\n?(\{[^`]*"tool"[^`]*\})\n?```'
-            matches = re.findall(pattern, content, re.DOTALL)
+            pattern2 = r'```(?:json)?\s*\n?(\{[^`]*"tool"[^`]*\})\n?```'
+            matches.extend(re.findall(pattern2, content, re.DOTALL))
+
+        # Pattern 3: Raw JSON with "tool" key (LLM sometimes outputs without code fences)
+        if not matches:
+            # Find potential JSON objects starting with {"tool"
+            # Use a smarter approach: find start, then balance braces
+            idx = 0
+            while idx < len(content):
+                start = content.find('{"tool"', idx)
+                if start == -1:
+                    break
+                # Balance braces to find the end
+                brace_count = 0
+                end = start
+                for i, c in enumerate(content[start:], start):
+                    if c == '{':
+                        brace_count += 1
+                    elif c == '}':
+                        brace_count -= 1
+                        if brace_count == 0:
+                            end = i + 1
+                            break
+                if end > start:
+                    potential_json = content[start:end]
+                    try:
+                        # Validate it's actually valid JSON with expected structure
+                        parsed = json.loads(potential_json)
+                        if "tool" in parsed and "arguments" in parsed:
+                            matches.append(potential_json)
+                    except json.JSONDecodeError:
+                        pass
+                idx = end if end > start else start + 1
 
         if not matches:
             return None, []
@@ -490,9 +523,34 @@ class OllamaAdapter:
     def _clean_response(self, content: str) -> str:
         """Remove tool call blocks from the response"""
         import re
+        # Remove code-fenced tool calls
         content = re.sub(r'```tool_call\s*\n?.*?\n?```', '', content, flags=re.DOTALL)
         content = re.sub(r'```(?:json)?\s*\n?\{[^`]*"tool"[^`]*\}\n?```', '', content, flags=re.DOTALL)
-        return content.strip()
+
+        # Remove raw JSON tool calls (find and remove balanced JSON objects with "tool" key)
+        result = []
+        idx = 0
+        while idx < len(content):
+            start = content.find('{"tool"', idx)
+            if start == -1:
+                result.append(content[idx:])
+                break
+            # Add content before the JSON
+            result.append(content[idx:start])
+            # Find end of JSON by balancing braces
+            brace_count = 0
+            end = start
+            for i, c in enumerate(content[start:], start):
+                if c == '{':
+                    brace_count += 1
+                elif c == '}':
+                    brace_count -= 1
+                    if brace_count == 0:
+                        end = i + 1
+                        break
+            idx = end if end > start else start + 1
+
+        return ''.join(result).strip()
 
 
 # Singleton instance
