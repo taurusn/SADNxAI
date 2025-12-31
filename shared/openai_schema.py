@@ -23,7 +23,7 @@ TOOLS = [
                     },
                     "value": {
                         "type": "string",
-                        "description": "Query value: technique name, classification type, search keywords, comma-separated regulation IDs, or column name for pattern detection"
+                        "description": "Query value: technique name, classification type, search keywords, comma-separated regulation IDs, or column name for pattern detection. Use comma-separated string for multiple values."
                     }
                 },
                 "required": ["query_type", "value"]

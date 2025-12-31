@@ -377,7 +377,7 @@ class OllamaAdapter:
             }
         },
         "execute_pipeline": {
-            "required": ["confirmed"],
+            "required": [],  # confirmed defaults to True in handler
             "types": {
                 "confirmed": bool,
                 # Allow threshold params to be passed alongside execute_pipeline
@@ -425,6 +425,9 @@ class OllamaAdapter:
                 # Allow int when expecting float (common in JSON)
                 if expected_type is float and isinstance(value, int):
                     arguments[field] = float(value)  # Convert int to float
+                # Allow list when expecting str - convert to comma-separated string
+                elif expected_type is str and isinstance(value, list):
+                    arguments[field] = ",".join(str(v) for v in value)
                 elif not isinstance(value, expected_type):
                     return False, f"Field '{field}' should be {expected_type.__name__}, got {type(value).__name__}"
 

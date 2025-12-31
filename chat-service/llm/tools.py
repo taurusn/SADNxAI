@@ -328,6 +328,10 @@ class ToolExecutor:
         query_type = args.get("query_type", "")
         value = args.get("value", "")
 
+        # Handle case where LLM passes a list instead of string
+        if isinstance(value, list):
+            value = ",".join(str(v) for v in value)
+
         if not query_type or not value:
             return {
                 "success": False,
