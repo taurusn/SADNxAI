@@ -358,11 +358,11 @@ class Generalizer:
             elif col_type == 'date':
                 result[col] = df[col].apply(lambda x: self._generalize_date(x, self.date_level))
             elif col_type == 'zipcode':
-                result[col] = df[col].apply(lambda x: self._generalize_zipcode(x, self.age_level))
+                result[col] = df[col].apply(lambda x: self._generalize_zipcode(x, self.location_level))
             elif col_type == 'gender':
-                result[col] = df[col].apply(lambda x: self._generalize_gender(x, self.age_level))
+                result[col] = df[col].apply(lambda x: self._generalize_gender(x, self.location_level))
             else:
-                result[col] = df[col].apply(lambda x: self._generalize_generic(x, self.age_level))
+                result[col] = df[col].apply(lambda x: self._generalize_generic(x, self.location_level))
 
         return result
 

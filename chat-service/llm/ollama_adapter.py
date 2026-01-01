@@ -454,33 +454,22 @@ class OllamaAdapter:
         # Pattern 3: Raw JSON with "tool" key (LLM sometimes outputs without code fences)
         if not matches:
             # Find potential JSON objects starting with {"tool"
-            # Use a smarter approach: find start, then balance braces
+            # Use JSON decoder for proper parsing (handles braces inside strings)
+            decoder = json.JSONDecoder()
             idx = 0
             while idx < len(content):
                 start = content.find('{"tool"', idx)
                 if start == -1:
                     break
-                # Balance braces to find the end
-                brace_count = 0
-                end = start
-                for i, c in enumerate(content[start:], start):
-                    if c == '{':
-                        brace_count += 1
-                    elif c == '}':
-                        brace_count -= 1
-                        if brace_count == 0:
-                            end = i + 1
-                            break
-                if end > start:
-                    potential_json = content[start:end]
-                    try:
-                        # Validate it's actually valid JSON with expected structure
-                        parsed = json.loads(potential_json)
-                        if "tool" in parsed and "arguments" in parsed:
-                            matches.append(potential_json)
-                    except json.JSONDecodeError:
-                        pass
-                idx = end if end > start else start + 1
+                try:
+                    # Use raw_decode to properly parse JSON including nested braces in strings
+                    parsed, end_offset = decoder.raw_decode(content, start)
+                    if "tool" in parsed and "arguments" in parsed:
+                        matches.append(json.dumps(parsed))
+                    idx = start + end_offset
+                except json.JSONDecodeError:
+                    # If parsing fails, skip this potential match
+                    idx = start + 1
 
         if not matches:
             return None, []

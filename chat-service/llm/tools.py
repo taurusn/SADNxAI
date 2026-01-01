@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 
 from shared.models import (
     Session, Classification, GeneralizationConfig,
-    MaskingTechnique, RegulationRef
+    MaskingTechnique, RegulationRef, SessionStatus
 )
 
 
@@ -74,6 +74,23 @@ class ToolExecutor:
 
         Records the AI's classification decision and saves to PostgreSQL.
         """
+        # Validate that all classified columns exist in the actual file
+        actual_columns = set(self.session.columns or [])
+        if actual_columns:
+            all_classified_cols = (
+                args.get("direct_identifiers", []) +
+                args.get("quasi_identifiers", []) +
+                args.get("linkage_identifiers", []) +
+                args.get("date_columns", []) +
+                args.get("sensitive_attributes", [])
+            )
+            invalid_cols = [col for col in all_classified_cols if col not in actual_columns]
+            if invalid_cols:
+                return {
+                    "success": False,
+                    "error": f"Column(s) not found in file: {invalid_cols}. Available columns: {list(actual_columns)}"
+                }
+
         # Build generalization config
         gen_config_args = args.get("generalization_config", {})
         gen_config = GeneralizationConfig(
@@ -220,6 +237,14 @@ class ToolExecutor:
         # Default to True since calling execute_pipeline implies approval
         confirmed = args.get("confirmed", True)
 
+        # Verify session is in approved state before executing pipeline
+        allowed_states = [SessionStatus.APPROVED, SessionStatus.PROPOSED, SessionStatus.DISCUSSING]
+        if self.session.status not in allowed_states:
+            return {
+                "success": False,
+                "error": f"Pipeline can only run after user approval. Current status: {self.session.status}"
+            }
+
         if self.session.classification is None:
             return {
                 "success": False,
@@ -269,6 +294,24 @@ class ToolExecutor:
 
         Updates privacy thresholds based on user requirements.
         """
+        # Validate threshold ranges
+        errors = []
+        for key in ["k_anonymity_minimum", "k_anonymity_target"]:
+            if key in args and args[key] < 1:
+                errors.append(f"{key} must be at least 1")
+        for key in ["l_diversity_minimum", "l_diversity_target"]:
+            if key in args and args[key] < 1:
+                errors.append(f"{key} must be at least 1")
+        for key in ["t_closeness_minimum", "t_closeness_target"]:
+            if key in args and (args[key] < 0 or args[key] > 1):
+                errors.append(f"{key} must be between 0 and 1")
+        for key in ["risk_score_minimum", "risk_score_target"]:
+            if key in args and (args[key] < 0 or args[key] > 100):
+                errors.append(f"{key} must be between 0 and 100")
+
+        if errors:
+            return {"success": False, "error": "; ".join(errors)}
+
         current = self.session.thresholds
         changes = []
 

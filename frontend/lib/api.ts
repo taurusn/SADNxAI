@@ -172,6 +172,16 @@ class ApiClient {
         }
       }
     }
+
+    // Process any remaining buffer content after stream ends
+    if (buffer.trim() && buffer.startsWith('data: ')) {
+      try {
+        const data = JSON.parse(buffer.slice(6));
+        onEvent(data as StreamEvent);
+      } catch (e) {
+        console.error('Failed to parse final SSE event:', buffer);
+      }
+    }
   }
 
   // Chat with SSE streaming
@@ -219,6 +229,16 @@ class ApiClient {
             console.error('Failed to parse SSE event:', line);
           }
         }
+      }
+    }
+
+    // Process any remaining buffer content after stream ends
+    if (buffer.trim() && buffer.startsWith('data: ')) {
+      try {
+        const data = JSON.parse(buffer.slice(6));
+        onEvent(data as StreamEvent);
+      } catch (e) {
+        console.error('Failed to parse final SSE event:', buffer);
       }
     }
   }
