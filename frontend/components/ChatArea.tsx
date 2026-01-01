@@ -24,10 +24,10 @@ export default function ChatArea() {
   const { currentSession, currentSessionId, isSending, streamingContent, streamingStatus, currentTool, pendingMessages } = useStore();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll to bottom on new messages or streaming content
+  // Auto-scroll to bottom on new messages, streaming content, or pending messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [currentSession?.messages, streamingContent]);
+  }, [currentSession?.messages, streamingContent, pendingMessages]);
 
   if (!currentSession) {
     return (
@@ -125,16 +125,20 @@ export default function ChatArea() {
                 </div>
               ))}
 
-            {/* Pending messages from completed iterations */}
-            {isSending && pendingMessages.map((content, idx) => (
-              <div key={`pending-${idx}`} className="flex justify-start message-enter">
+            {/* Pending messages from completed iterations - show accumulated context */}
+            {isSending && pendingMessages.length > 0 && (
+              <div className="flex justify-start message-enter">
                 <div className="bg-white border border-gray-200 rounded-2xl rounded-bl-md px-4 py-3 shadow-sm max-w-2xl">
-                  <div className="prose prose-sm max-w-none">
-                    <ReactMarkdown>{content}</ReactMarkdown>
+                  <div className="prose prose-sm max-w-none space-y-2">
+                    {pendingMessages.map((content, idx) => (
+                      <div key={`pending-${idx}`} className="text-gray-700">
+                        <ReactMarkdown>{content}</ReactMarkdown>
+                      </div>
+                    ))}
                   </div>
                 </div>
               </div>
-            ))}
+            )}
 
             {/* Current streaming / status indicator */}
             {isSending && (
@@ -158,11 +162,13 @@ export default function ChatArea() {
                     </div>
                   )}
 
-                  {/* Tool execution indicator */}
-                  {streamingStatus === 'tool' && currentTool && (
+                  {/* Tool execution indicator - always show when status is 'tool' */}
+                  {streamingStatus === 'tool' && (
                     <div className="flex items-center gap-2 text-amber-600">
                       <Wrench className="w-4 h-4 animate-spin" />
-                      <span className="text-sm">Executing: {currentTool}</span>
+                      <span className="text-sm">
+                        {currentTool ? `Executing: ${currentTool}` : 'Executing tool...'}
+                      </span>
                     </div>
                   )}
 
@@ -174,8 +180,8 @@ export default function ChatArea() {
                     </div>
                   )}
 
-                  {/* Loading dots */}
-                  {!streamingStatus && !streamingContent && pendingMessages.length === 0 && (
+                  {/* Loading dots - fallback when waiting for response */}
+                  {!streamingContent && !streamingStatus && (
                     <div className="flex gap-1">
                       <span className="w-2 h-2 bg-gray-400 rounded-full loading-dot" />
                       <span className="w-2 h-2 bg-gray-400 rounded-full loading-dot" />
