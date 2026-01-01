@@ -76,20 +76,28 @@ class ToolExecutor:
         """
         # Validate that all classified columns exist in the actual file
         actual_columns = set(self.session.columns or [])
+        print(f"[Column Validation] Session columns: {self.session.columns}")
+        print(f"[Column Validation] Actual columns set: {actual_columns}")
+
+        all_classified_cols = (
+            args.get("direct_identifiers", []) +
+            args.get("quasi_identifiers", []) +
+            args.get("linkage_identifiers", []) +
+            args.get("date_columns", []) +
+            args.get("sensitive_attributes", [])
+        )
+        print(f"[Column Validation] LLM classified: {all_classified_cols}")
+
         if actual_columns:
-            all_classified_cols = (
-                args.get("direct_identifiers", []) +
-                args.get("quasi_identifiers", []) +
-                args.get("linkage_identifiers", []) +
-                args.get("date_columns", []) +
-                args.get("sensitive_attributes", [])
-            )
             invalid_cols = [col for col in all_classified_cols if col not in actual_columns]
+            print(f"[Column Validation] Invalid columns: {invalid_cols}")
             if invalid_cols:
                 return {
                     "success": False,
                     "error": f"Column(s) not found in file: {invalid_cols}. Available columns: {list(actual_columns)}"
                 }
+        else:
+            print("[Column Validation] WARNING: No columns in session, skipping validation")
 
         # Build generalization config
         gen_config_args = args.get("generalization_config", {})
