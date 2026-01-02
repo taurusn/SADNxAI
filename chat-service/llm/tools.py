@@ -165,6 +165,15 @@ class ToolExecutor:
                 for ref in refs if isinstance(ref, dict)
             ]
 
+        # Normalize reasoning - handle both string and array formats
+        reasoning = args.get("reasoning", {})
+        for col, val in reasoning.items():
+            if isinstance(val, list):
+                reasoning[col] = " ".join(str(v) for v in val)
+            elif not isinstance(val, str):
+                reasoning[col] = str(val)
+        args["reasoning"] = reasoning
+
         # Build classification
         classification = Classification(
             direct_identifiers=args.get("direct_identifiers", []),

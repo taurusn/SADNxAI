@@ -311,8 +311,18 @@ Assume file has columns: [<col1>, <col2>, <col3>, ...]
 **Recommendation**: Brief recommendation with privacy metric justification.
 
 ```tool_call
-{"tool": "classify_columns", "arguments": {"direct_identifiers": ["<actual_col>", ...], "quasi_identifiers": ["<actual_col>", ...], "linkage_identifiers": ["<actual_col>", ...], "date_columns": ["<actual_col>", ...], "sensitive_attributes": ["<actual_col>", ...], "recommended_techniques": {"<actual_col>": "<TECHNIQUE>", ...}, "reasoning": {"<actual_col>": "<reason>", ...}}}
+{"tool": "classify_columns", "arguments": {
+  "direct_identifiers": ["col1", "col2"],
+  "quasi_identifiers": ["col3", "col4"],
+  "linkage_identifiers": ["col5"],
+  "date_columns": ["col6"],
+  "sensitive_attributes": ["col7", "col8"],
+  "recommended_techniques": {"col1": "SUPPRESS", "col3": "GENERALIZE", "col5": "PSEUDONYMIZE", "col6": "DATE_SHIFT", "col7": "KEEP"},
+  "reasoning": {"col1": "Direct identifier per PDPL Art.11", "col3": "Quasi-identifier for k-anonymity"}
+}}
 ```
+
+**IMPORTANT**: `reasoning` values must be STRINGS, not arrays! Write `"col": "reason"` NOT `"col": ["reason"]`
 
 Do you approve this classification, or would you like to discuss any adjustments?
 
