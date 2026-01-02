@@ -130,9 +130,13 @@ class ToolExecutor:
             if unclassified:
                 # Save partial classification for next merge attempt
                 self._save_partial_classification(args)
+                unclassified_list = list(unclassified)
                 return {
                     "success": False,
-                    "error": f"Columns NOT classified: {list(unclassified)}. Send ONLY these {len(unclassified)} missing columns in your next classify_columns call - they will be merged with your previous classification."
+                    "error": f"Columns NOT classified: {unclassified_list}. "
+                             f"Look at the Sample Data values for these columns and classify them. "
+                             f"If unsure, add them to 'sensitive_attributes' (KEEP). "
+                             f"Send ONLY these {len(unclassified_list)} columns - they will merge with your previous classification."
                 }
         else:
             print("[Column Validation] WARNING: No columns in session, skipping validation")
