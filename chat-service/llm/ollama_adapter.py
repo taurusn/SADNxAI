@@ -267,6 +267,15 @@ class OllamaAdapter:
                         if data.get("done", False):
                             # Extract tool calls from full content
                             tool_calls = self._extract_tool_calls(full_content)
+
+                            # Debug: Log full LLM response
+                            print(f"[LLM Response] Raw content ({len(full_content)} chars):")
+                            print(f"[LLM Response] {full_content[:500]}{'...' if len(full_content) > 500 else ''}")
+                            print(f"[LLM Response] Tool calls found: {len(tool_calls) if tool_calls else 0}")
+                            if tool_calls:
+                                for tc in tool_calls:
+                                    print(f"[LLM Response] Tool: {tc.get('name', 'unknown')}")
+
                             if tool_calls:
                                 full_content = self._clean_response(full_content)
 
