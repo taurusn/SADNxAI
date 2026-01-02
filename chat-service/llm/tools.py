@@ -73,7 +73,33 @@ class ToolExecutor:
         Handle classify_columns tool call.
 
         Records the AI's classification decision and saves to PostgreSQL.
+        Supports incremental merge - LLM can send only missing columns on retry.
         """
+        # Merge with existing partial classification if present
+        existing = self.session.classification
+        if existing:
+            print("[Column Validation] Merging with existing partial classification")
+            # Merge lists (new columns added to existing)
+            for category in ["direct_identifiers", "quasi_identifiers", "linkage_identifiers", "date_columns", "sensitive_attributes"]:
+                existing_list = getattr(existing, category, []) or []
+                new_list = args.get(category, [])
+                # Combine and dedupe while preserving order
+                merged = list(existing_list)
+                for col in new_list:
+                    if col not in merged:
+                        merged.append(col)
+                args[category] = merged
+
+            # Merge dicts (recommended_techniques, reasoning, regulation_refs)
+            for dict_field in ["recommended_techniques", "reasoning", "regulation_refs"]:
+                existing_dict = getattr(existing, dict_field, {}) or {}
+                # Convert enum values to strings for recommended_techniques
+                if dict_field == "recommended_techniques" and existing_dict:
+                    existing_dict = {k: v.value if hasattr(v, 'value') else v for k, v in existing_dict.items()}
+                new_dict = args.get(dict_field, {})
+                merged_dict = {**existing_dict, **new_dict}  # New values override
+                args[dict_field] = merged_dict
+
         # Validate that all classified columns exist in the actual file
         actual_columns = set(self.session.columns or [])
         print(f"[Column Validation] Session columns: {self.session.columns}")
@@ -86,7 +112,7 @@ class ToolExecutor:
             args.get("date_columns", []) +
             args.get("sensitive_attributes", [])
         )
-        print(f"[Column Validation] LLM classified: {all_classified_cols}")
+        print(f"[Column Validation] LLM classified (after merge): {all_classified_cols}")
 
         if actual_columns:
             invalid_cols = [col for col in all_classified_cols if col not in actual_columns]
@@ -95,6 +121,18 @@ class ToolExecutor:
                 return {
                     "success": False,
                     "error": f"Column(s) not found in file: {invalid_cols}. Available columns: {list(actual_columns)}"
+                }
+
+            # Check that ALL columns from file are classified
+            all_classified_set = set(all_classified_cols)
+            unclassified = actual_columns - all_classified_set
+            print(f"[Column Validation] Unclassified columns: {unclassified}")
+            if unclassified:
+                # Save partial classification for next merge attempt
+                self._save_partial_classification(args)
+                return {
+                    "success": False,
+                    "error": f"Columns NOT classified: {list(unclassified)}. Send ONLY these {len(unclassified)} missing columns in your next classify_columns call - they will be merged with your previous classification."
                 }
         else:
             print("[Column Validation] WARNING: No columns in session, skipping validation")
@@ -208,6 +246,39 @@ class ToolExecutor:
                 result["db_error"] = db_save_result.get("error")
 
         return result
+
+    def _save_partial_classification(self, args: Dict[str, Any]) -> None:
+        """
+        Save partial classification to session for incremental merge on retry.
+        This allows the LLM to send only missing columns in subsequent calls.
+        """
+        gen_config_args = args.get("generalization_config", {})
+        gen_config = GeneralizationConfig(
+            age_level=gen_config_args.get("age_level", 1),
+            location_level=gen_config_args.get("location_level", 1),
+            date_level=gen_config_args.get("date_level", 1)
+        )
+
+        # Convert string techniques to enum
+        recommended_techniques = {}
+        for col, tech in args.get("recommended_techniques", {}).items():
+            try:
+                recommended_techniques[col] = MaskingTechnique(tech)
+            except ValueError:
+                recommended_techniques[col] = MaskingTechnique.KEEP
+
+        self.session.classification = Classification(
+            direct_identifiers=args.get("direct_identifiers", []),
+            quasi_identifiers=args.get("quasi_identifiers", []),
+            linkage_identifiers=args.get("linkage_identifiers", []),
+            date_columns=args.get("date_columns", []),
+            sensitive_attributes=args.get("sensitive_attributes", []),
+            recommended_techniques=recommended_techniques,
+            reasoning=args.get("reasoning", {}),
+            regulation_refs={},  # Skip complex conversion for partial save
+            generalization_config=gen_config
+        )
+        print(f"[Column Validation] Saved partial classification with {len(args.get('direct_identifiers', []) + args.get('quasi_identifiers', []) + args.get('linkage_identifiers', []) + args.get('date_columns', []) + args.get('sensitive_attributes', []))} columns")
 
     async def _save_classifications_to_db(self, classifications: list) -> Dict[str, Any]:
         """Save classifications to PostgreSQL database"""

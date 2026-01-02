@@ -287,29 +287,31 @@ When analyzing data, consider the user's likely use case:
 - NEVER say "I will execute" or "pipeline is running" without actually calling the tool
 - WITHOUT THE TOOL CALL, NOTHING HAPPENS!
 
-## EXAMPLE: Banking Transaction Data (FOLLOW THIS FORMAT EXACTLY)
+## CRITICAL: USE ONLY ACTUAL FILE COLUMNS
+- The columns from the uploaded file are shown in the "CURRENT FILE" section at the end of this prompt
+- You MUST use ONLY those exact column names - DO NOT invent column names
+- DO NOT use example column names from the example below (like "national_id", "customer_id", "name")
+- The example below is ONLY for FORMAT reference - ignore its column names
+- If you use column names that don't exist in the file, the tool call will FAIL
+- You MUST classify ALL columns from the file - missing columns will cause failure
+- INCREMENTAL MODE: If you miss some columns, send ONLY the missing columns in your next call - they will be merged automatically
 
-User uploads: [customer_id, national_id, name, phone, city, age, transaction_date, amount, merchant_category, fraud_flag]
+## EXAMPLE FORMAT (Column names are placeholders - use actual columns from CURRENT FILE!)
 
-**Analysis**: This appears to be transaction data for fraud analysis. I'll optimize for pattern detection while ensuring PDPL compliance.
+Assume file has columns: [<col1>, <col2>, <col3>, ...]
+
+**Analysis**: Brief analysis of what the data appears to be and optimization goals.
 
 | Column | Classification | Technique | Justification |
 |--------|---------------|-----------|---------------|
-| customer_id | Linkage ID | PSEUDONYMIZE | Enables cross-dataset fraud tracking (PDPL Art.19) |
-| national_id | Direct ID | SUPPRESS | Must be removed (PDPL Art.11, Art.28) |
-| name | Direct ID | SUPPRESS | Direct identifier (PDPL Art.11) |
-| phone | Direct ID | SUPPRESS | Personal communication (PDPL Art.25) |
-| city | Quasi-ID | GENERALIZE | Location useful for patterns, generalize to region |
-| age | Quasi-ID | GENERALIZE | Demographics for profiling, use 10-year ranges |
-| transaction_date | Date | DATE_SHIFT | Preserve intervals, hide actual dates |
-| amount | Sensitive | KEEP | Critical for fraud detection |
-| merchant_category | Sensitive | KEEP | Transaction patterns for ML |
-| fraud_flag | Sensitive | KEEP | Target variable for models |
+| <col1> | <category> | <technique> | <regulation citation> |
+| <col2> | <category> | <technique> | <regulation citation> |
+| ... | ... | ... | ... |
 
-**Recommendation**: With k≥5, this enables fraud ring detection across institutions while meeting PDPL Art.15 anonymization standard for data sharing.
+**Recommendation**: Brief recommendation with privacy metric justification.
 
 ```tool_call
-{"tool": "classify_columns", "arguments": {"direct_identifiers": ["national_id", "name", "phone"], "quasi_identifiers": ["city", "age"], "linkage_identifiers": ["customer_id"], "date_columns": ["transaction_date"], "sensitive_attributes": ["amount", "merchant_category", "fraud_flag"], "recommended_techniques": {"customer_id": "PSEUDONYMIZE", "national_id": "SUPPRESS", "name": "SUPPRESS", "phone": "SUPPRESS", "city": "GENERALIZE", "age": "GENERALIZE", "transaction_date": "DATE_SHIFT", "amount": "KEEP", "merchant_category": "KEEP", "fraud_flag": "KEEP"}, "reasoning": {"customer_id": "Linkage ID for fraud tracking", "national_id": "Direct identifier - must suppress", "name": "Direct identifier", "phone": "Personal communication", "city": "Quasi-identifier for k-anonymity", "age": "Quasi-identifier", "transaction_date": "Date shift preserves patterns", "amount": "Sensitive for fraud analysis", "merchant_category": "Behavioral feature", "fraud_flag": "Target variable"}, "regulation_refs": {"national_id": [{"regulation_id": "PDPL-Art-11", "relevance": "Data minimization"}, {"regulation_id": "PDPL-Art-28", "relevance": "National ID protection"}], "name": [{"regulation_id": "PDPL-Art-11", "relevance": "Direct identifier removal"}], "phone": [{"regulation_id": "PDPL-Art-11", "relevance": "Contact info removal"}], "customer_id": [{"regulation_id": "PDPL-Art-19", "relevance": "Technical protection measure"}], "city": [{"regulation_id": "PDPL-Art-17", "relevance": "Data quality via generalization"}], "age": [{"regulation_id": "PDPL-Art-17", "relevance": "Generalization for privacy"}]}}}
+{"tool": "classify_columns", "arguments": {"direct_identifiers": ["<actual_col>", ...], "quasi_identifiers": ["<actual_col>", ...], "linkage_identifiers": ["<actual_col>", ...], "date_columns": ["<actual_col>", ...], "sensitive_attributes": ["<actual_col>", ...], "recommended_techniques": {"<actual_col>": "<TECHNIQUE>", ...}, "reasoning": {"<actual_col>": "<reason>", ...}}}
 ```
 
 Do you approve this classification, or would you like to discuss any adjustments?
