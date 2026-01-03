@@ -289,8 +289,23 @@ class LLMAdapter:
                             json_brace_count = 0
 
                     if in_json_block:
-                        # Track braces to find end of JSON
-                        for i, c in enumerate(buffer[emitted_length:]):
+                        # Track braces to find end of JSON, respecting quoted strings
+                        i = 0
+                        scan_start = emitted_length
+                        in_string = False
+                        escape_next = False
+                        for i, c in enumerate(buffer[scan_start:]):
+                            if escape_next:
+                                escape_next = False
+                                continue
+                            if c == '\\' and in_string:
+                                escape_next = True
+                                continue
+                            if c == '"' and not escape_next:
+                                in_string = not in_string
+                                continue
+                            if in_string:
+                                continue
                             if c == '{':
                                 json_brace_count += 1
                             elif c == '}':
@@ -298,7 +313,7 @@ class LLMAdapter:
                                 if json_brace_count == 0:
                                     # Found end of JSON, skip it
                                     in_json_block = False
-                                    emitted_length = emitted_length + i + 1
+                                    emitted_length = scan_start + i + 1
                                     break
                         continue  # Don't emit while in JSON block
 

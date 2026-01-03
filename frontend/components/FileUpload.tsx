@@ -51,7 +51,7 @@ export default function FileUpload() {
   };
 
   return (
-    <div className="w-full max-w-lg">
+    <div className="w-full max-w-lg px-4 md:px-0">
       <input
         ref={fileInputRef}
         type="file"
@@ -67,7 +67,7 @@ export default function FileUpload() {
         onDrop={handleDrop}
         onClick={() => !selectedFile && fileInputRef.current?.click()}
         className={`
-          relative border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all
+          relative border-2 border-dashed rounded-xl p-6 md:p-8 text-center cursor-pointer transition-all
           ${isDragging
             ? 'border-primary bg-primary/5'
             : selectedFile
@@ -85,13 +85,13 @@ export default function FileUpload() {
               <p className="font-medium text-gray-800">{selectedFile.name}</p>
               <p className="text-sm text-gray-500">{formatFileSize(selectedFile.size)}</p>
             </div>
-            <div className="flex items-center justify-center gap-3">
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   setSelectedFile(null);
                 }}
-                className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
+                className="px-4 py-3 min-h-[44px] text-gray-600 hover:text-gray-800 transition-colors"
               >
                 Cancel
               </button>
@@ -101,7 +101,7 @@ export default function FileUpload() {
                   handleUpload();
                 }}
                 disabled={isSending}
-                className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50"
+                className="px-4 py-3 min-h-[44px] bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50"
               >
                 {isSending ? 'Uploading...' : 'Upload & Analyze'}
               </button>

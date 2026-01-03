@@ -152,6 +152,7 @@ class ConversationManager:
     def detect_approval(self, user_message: str) -> bool:
         """
         Detect if user message contains explicit approval.
+        Uses word boundaries to avoid false positives (e.g., "disapprove" won't match "approve").
 
         Args:
             user_message: User's message text
@@ -159,17 +160,28 @@ class ConversationManager:
         Returns:
             True if approval detected
         """
-        approval_phrases = [
-            "approve", "approved", "yes", "proceed", "go ahead",
-            "execute", "run it", "do it", "let's go", "confirm",
-            "agreed", "looks good", "lgtm", "ship it"
-        ]
+        import re
 
         message_lower = user_message.lower().strip()
 
-        # Check for explicit approval
+        # Rejection phrases take priority - check these first
+        rejection_phrases = [
+            "don't", "do not", "dont", "no", "stop", "wait", "cancel",
+            "disapprove", "reject", "hold", "not yet", "change",
+            "don't approve", "do not approve", "not approved"
+        ]
+        for phrase in rejection_phrases:
+            if re.search(rf'\b{re.escape(phrase)}\b', message_lower):
+                return False
+
+        # Check for approval (whole word match only)
+        approval_phrases = [
+            "approve", "approved", "yes", "proceed", "go ahead",
+            "execute", "run it", "do it", "let's go", "lets go", "confirm",
+            "agreed", "looks good", "lgtm", "ship it"
+        ]
         for phrase in approval_phrases:
-            if phrase in message_lower:
+            if re.search(rf'\b{re.escape(phrase)}\b', message_lower):
                 return True
 
         return False

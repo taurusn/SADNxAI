@@ -329,12 +329,20 @@ class ToolExecutor:
         # Default to True since calling execute_pipeline implies approval
         confirmed = args.get("confirmed", True)
 
-        # Verify session is in approved state before executing pipeline
-        allowed_states = [SessionStatus.APPROVED, SessionStatus.PROPOSED, SessionStatus.DISCUSSING]
-        if self.session.status not in allowed_states:
+        # Verify session is in APPROVED state before executing pipeline
+        # Only APPROVED state is allowed - PROPOSED and DISCUSSING require explicit user approval first
+        if self.session.status != SessionStatus.APPROVED:
+            if self.session.status in [SessionStatus.PROPOSED, SessionStatus.DISCUSSING]:
+                return {
+                    "success": False,
+                    "error": "Cannot execute pipeline without explicit user approval. "
+                             "Please wait for the user to confirm with 'approve', 'proceed', or similar.",
+                    "requires_approval": True
+                }
             return {
                 "success": False,
-                "error": f"Pipeline can only run after user approval. Current status: {self.session.status}"
+                "error": f"Cannot execute pipeline in {self.session.status.value} state. "
+                         "Classification and user approval are required first."
             }
 
         if self.session.classification is None:

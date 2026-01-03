@@ -6,7 +6,7 @@ import { api } from '@/lib/api';
 import MessageInput from './MessageInput';
 import FileUpload from './FileUpload';
 import ReactMarkdown from 'react-markdown';
-import { Download, FileText, CheckCircle, XCircle, AlertCircle, Loader2, Wrench, Sparkles } from 'lucide-react';
+import { Download, FileText, CheckCircle, XCircle, AlertCircle, Loader2, Wrench, Sparkles, Menu } from 'lucide-react';
 
 const STATUS_BADGES: Record<string, { label: string; color: string; icon: any }> = {
   idle: { label: 'Ready', color: 'bg-gray-100 text-gray-600', icon: AlertCircle },
@@ -21,7 +21,7 @@ const STATUS_BADGES: Record<string, { label: string; color: string; icon: any }>
 };
 
 export default function ChatArea() {
-  const { currentSession, currentSessionId, isSending, streamingContent, streamingStatus, currentTool, pendingMessages } = useStore();
+  const { currentSession, currentSessionId, isSending, streamingContent, streamingStatus, currentTool, pendingMessages, toggleSidebar } = useStore();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom on new messages, streaming content, or pending messages
@@ -55,8 +55,20 @@ export default function ChatArea() {
 
   return (
     <div className="flex-1 flex flex-col h-full">
-      {/* Header */}
-      <header className="flex items-center justify-between px-6 py-3 border-b bg-white">
+      {/* Mobile header - only visible on mobile */}
+      <div className="flex md:hidden items-center justify-between px-4 py-3 border-b border-gray-200 bg-white">
+        <button
+          onClick={toggleSidebar}
+          className="p-2 -ml-2 rounded-lg hover:bg-gray-100 min-h-[44px] min-w-[44px] flex items-center justify-center"
+        >
+          <Menu className="w-6 h-6" />
+        </button>
+        <span className="font-semibold text-gray-900">SADNxAI</span>
+        <div className="w-10" /> {/* Spacer for centering */}
+      </div>
+
+      {/* Desktop Header - hidden on mobile */}
+      <header className="hidden md:flex items-center justify-between px-6 py-3 border-b bg-white">
         <div className="flex items-center gap-3">
           <h1 className="font-semibold text-gray-800 truncate max-w-md">
             {currentSession.title}
@@ -69,21 +81,21 @@ export default function ChatArea() {
 
         {/* Download buttons - show for both completed and failed (with output available) */}
         {(currentSession.status === 'completed' || currentSession.status === 'failed') && currentSession.output_path && (
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
             <a
               href={api.getDataDownloadUrl(currentSession.id)}
-              className="flex items-center gap-2 px-3 py-1.5 bg-primary text-white text-sm rounded-lg hover:bg-primary/90 transition-colors"
+              className="flex items-center justify-center gap-2 px-4 py-2 min-h-[44px] bg-primary text-white text-sm rounded-lg hover:bg-primary/90 transition-colors"
             >
               <Download className="w-4 h-4" />
-              Download CSV
+              <span>CSV</span>
             </a>
             {currentSession.report_path && (
               <a
                 href={api.getReportDownloadUrl(currentSession.id)}
-                className="flex items-center gap-2 px-3 py-1.5 bg-gray-800 text-white text-sm rounded-lg hover:bg-gray-700 transition-colors"
+                className="flex items-center justify-center gap-2 px-4 py-2 min-h-[44px] bg-gray-800 text-white text-sm rounded-lg hover:bg-gray-700 transition-colors"
               >
                 <FileText className="w-4 h-4" />
-                Download Report
+                <span>Report</span>
               </a>
             )}
           </div>
@@ -91,7 +103,7 @@ export default function ChatArea() {
       </header>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+      <div className="flex-1 overflow-y-auto px-4 py-4 md:px-6 space-y-4">
         {currentSession.messages.length === 0 ? (
           <div className="flex items-center justify-center h-full">
             <FileUpload />
@@ -199,7 +211,7 @@ export default function ChatArea() {
 
       {/* Validation Result Card */}
       {currentSession.validation_result && (
-        <div className="mx-6 mb-4">
+        <div className="mx-4 mb-4 md:mx-6">
           <div className={`p-4 rounded-lg border ${
             currentSession.validation_result.passed
               ? 'bg-green-50 border-green-200'
@@ -217,7 +229,7 @@ export default function ChatArea() {
                 Validation {currentSession.validation_result.passed ? 'Passed' : 'Failed'}
               </span>
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 sm:gap-3 text-sm">
               {Object.entries(currentSession.validation_result.metrics).map(([name, metric]: [string, any]) => (
                 <div key={name} className="bg-white/50 p-2 rounded">
                   <div className="text-gray-600 text-xs uppercase">{name.replace('_', '-')}</div>
@@ -232,7 +244,7 @@ export default function ChatArea() {
       )}
 
       {/* Input Area */}
-      <div className="border-t bg-white px-6 py-4">
+      <div className="border-t bg-white px-4 py-3 md:px-6 md:py-4 pb-safe-bottom">
         <MessageInput />
       </div>
     </div>
