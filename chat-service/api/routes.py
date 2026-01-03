@@ -119,7 +119,20 @@ async def _run_agentic_loop_streaming(
         # Execute each tool and add results
         for tc in tool_calls_raw:
             tool_name = tc["function"]["name"]
-            args = json.loads(tc["function"]["arguments"])
+
+            # Parse arguments safely - handle both string and dict
+            try:
+                args_raw = tc["function"]["arguments"]
+                if isinstance(args_raw, str):
+                    args = json.loads(args_raw)
+                elif isinstance(args_raw, dict):
+                    args = args_raw
+                else:
+                    args = {}
+            except (json.JSONDecodeError, TypeError, KeyError) as e:
+                print(f"[Agentic Loop] Failed to parse tool arguments: {e}")
+                yield _sse_event("error", {"message": f"Invalid tool arguments for {tool_name}: {e}"})
+                continue
 
             # Yield tool_call event
             yield _sse_event("tool_call", {"tool": tool_name, "args": args})
@@ -257,7 +270,19 @@ async def _run_agentic_loop(
         # Execute each tool and add results
         for tc in tool_calls_raw:
             tool_name = tc["function"]["name"]
-            args = json.loads(tc["function"]["arguments"])
+
+            # Parse arguments safely - handle both string and dict
+            try:
+                args_raw = tc["function"]["arguments"]
+                if isinstance(args_raw, str):
+                    args = json.loads(args_raw)
+                elif isinstance(args_raw, dict):
+                    args = args_raw
+                else:
+                    args = {}
+            except (json.JSONDecodeError, TypeError, KeyError) as e:
+                print(f"[Agentic Loop] Failed to parse tool arguments: {e}")
+                continue
 
             # Check if this is a terminal tool
             if tool_name in terminal_tools:

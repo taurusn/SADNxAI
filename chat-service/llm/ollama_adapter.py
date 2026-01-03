@@ -156,14 +156,34 @@ class OllamaAdapter:
                 # Fallback to custom tool call parsing
                 tool_calls, validation_errors = self._extract_tool_calls_with_errors(assistant_message)
 
-                # If there are validation errors and we haven't exhausted retries, retry with feedback
-                if validation_errors and attempt < max_retries:
-                    print(f"Retry {attempt + 1}: Tool call validation errors - {validation_errors}")
+                # Determine if we expected a tool call based on session state
+                expects_tool = False
+                if session_context:
+                    status = session_context.get("status", "").upper()
+                    # These states expect tool calls
+                    expects_tool = status in ["ANALYZING", "PROPOSED", "DISCUSSING", "FAILED"]
+
+                # Retry if: validation errors OR (expected tools but got none)
+                missing_expected_tool = expects_tool and not tool_calls
+                should_retry = (validation_errors or missing_expected_tool) and attempt < max_retries
+
+                if should_retry:
+                    if validation_errors:
+                        error_feedback = f"Your tool call had errors: {validation_errors}. Please fix and try again."
+                        print(f"Retry {attempt + 1}: Tool call validation errors - {validation_errors}")
+                    else:
+                        error_feedback = (
+                            "You must call a tool. Do not describe what you would do - actually call the tool. "
+                            "Use classify_columns to classify the data, execute_pipeline after approval, "
+                            "or update_thresholds to adjust privacy settings."
+                        )
+                        print(f"Retry {attempt + 1}: Expected tool call but got text response")
+
                     # Add the assistant's failed response and error feedback
                     full_messages.append({"role": "assistant", "content": assistant_message})
                     full_messages.append({
                         "role": "user",
-                        "content": f"Your tool call had errors: {validation_errors}. Please fix and try again with a valid tool call."
+                        "content": error_feedback
                     })
                     continue  # Retry
 
@@ -235,6 +255,10 @@ class OllamaAdapter:
                 }
             }
 
+            # Add native tools if enabled (experimental - requires Ollama 0.3.0+)
+            if self.use_native_tools:
+                payload["tools"] = self.tools
+
             async with client.stream(
                 "POST",
                 f"{self.base_url}/api/chat",
@@ -265,18 +289,35 @@ class OllamaAdapter:
 
                         # Check if done
                         if data.get("done", False):
-                            # Extract tool calls from full content
-                            tool_calls = self._extract_tool_calls(full_content)
+                            tool_calls = None
+
+                            # Check for native tool calls first (Ollama 0.3.0+)
+                            native_tool_calls = message.get("tool_calls")
+                            if native_tool_calls and self.use_native_tools:
+                                tool_calls = []
+                                for i, tc in enumerate(native_tool_calls):
+                                    func = tc.get("function", {})
+                                    tool_calls.append({
+                                        "id": f"call_{i}",
+                                        "type": "function",
+                                        "function": {
+                                            "name": func.get("name"),
+                                            "arguments": json.dumps(func.get("arguments", {}))
+                                        }
+                                    })
+                                print(f"[LLM Response] Native tool calls: {len(tool_calls)}")
+                            else:
+                                # Fallback to regex extraction
+                                tool_calls = self._extract_tool_calls(full_content)
+                                print(f"[LLM Response] Regex tool calls: {len(tool_calls) if tool_calls else 0}")
 
                             # Debug: Log full LLM response
                             print(f"[LLM Response] Raw content ({len(full_content)} chars):")
                             print(f"[LLM Response] {full_content[:500]}{'...' if len(full_content) > 500 else ''}")
-                            print(f"[LLM Response] Tool calls found: {len(tool_calls) if tool_calls else 0}")
                             if tool_calls:
                                 for tc in tool_calls:
-                                    print(f"[LLM Response] Tool: {tc.get('name', 'unknown')}")
-
-                            if tool_calls:
+                                    func = tc.get("function", {})
+                                    print(f"[LLM Response] Tool: {func.get('name', 'unknown')}")
                                 full_content = self._clean_response(full_content)
 
                             yield {
@@ -456,9 +497,20 @@ class OllamaAdapter:
         matches.extend(re.findall(pattern1, content, re.DOTALL))
 
         # Pattern 2: ```json blocks with "tool" key
+        # Use a more robust approach: match code fences, then validate JSON separately
         if not matches:
-            pattern2 = r'```(?:json)?\s*\n?(\{[^`]*"tool"[^`]*\})\n?```'
-            matches.extend(re.findall(pattern2, content, re.DOTALL))
+            pattern2 = r'```(?:json)?\s*\n?([\s\S]*?)\n?```'
+            for block in re.findall(pattern2, content, re.DOTALL):
+                block = block.strip()
+                # Check if this looks like a tool call JSON
+                if '"tool"' in block and block.startswith('{'):
+                    try:
+                        # Validate it's proper JSON with required fields
+                        parsed = json.loads(block)
+                        if "tool" in parsed:
+                            matches.append(block)
+                    except json.JSONDecodeError:
+                        continue  # Not valid JSON, skip
 
         # Pattern 3: Raw JSON with "tool" key (LLM sometimes outputs without code fences)
         if not matches:
@@ -472,10 +524,12 @@ class OllamaAdapter:
                     break
                 try:
                     # Use raw_decode to properly parse JSON including nested braces in strings
-                    parsed, end_offset = decoder.raw_decode(content, start)
+                    # raw_decode returns (obj, end) where end is the ABSOLUTE position in content
+                    parsed, end_pos = decoder.raw_decode(content, start)
                     if "tool" in parsed and "arguments" in parsed:
                         matches.append(json.dumps(parsed))
-                    idx = start + end_offset
+                    # end_pos is already absolute, not relative to start
+                    idx = end_pos
                 except json.JSONDecodeError:
                     # If parsing fails, skip this potential match
                     idx = start + 1
@@ -521,6 +575,42 @@ class OllamaAdapter:
         tool_calls, _ = self._extract_tool_calls_with_errors(content)
         return tool_calls
 
+    def _find_json_end(self, content: str, start: int) -> int:
+        """
+        Find the end of a JSON object respecting quoted strings.
+        Returns the index after the closing brace, or -1 if not found.
+        """
+        brace_count = 0
+        in_string = False
+        escape_next = False
+
+        for i in range(start, len(content)):
+            c = content[i]
+
+            if escape_next:
+                escape_next = False
+                continue
+
+            if c == '\\' and in_string:
+                escape_next = True
+                continue
+
+            if c == '"' and not escape_next:
+                in_string = not in_string
+                continue
+
+            if in_string:
+                continue
+
+            if c == '{':
+                brace_count += 1
+            elif c == '}':
+                brace_count -= 1
+                if brace_count == 0:
+                    return i + 1
+
+        return -1  # Unclosed JSON
+
     def _clean_response(self, content: str) -> str:
         """Remove tool call blocks from the response"""
         import re
@@ -538,17 +628,8 @@ class OllamaAdapter:
                 break
             # Add content before the JSON
             result.append(content[idx:start])
-            # Find end of JSON by balancing braces
-            brace_count = 0
-            end = start
-            for i, c in enumerate(content[start:], start):
-                if c == '{':
-                    brace_count += 1
-                elif c == '}':
-                    brace_count -= 1
-                    if brace_count == 0:
-                        end = i + 1
-                        break
+            # Find end of JSON respecting quoted strings
+            end = self._find_json_end(content, start)
             idx = end if end > start else start + 1
 
         return ''.join(result).strip()
