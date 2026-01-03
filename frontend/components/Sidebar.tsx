@@ -58,7 +58,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
       <div className="p-4 border-b border-sidebar-border">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
-            <Image src="/logo.png" alt="SADNxAI Logo" width={32} height={32} />
+            <Image src="/logo.png" alt="SADNxAI Logo" width={64} height={64} className="brightness-125" />
             <span className="text-xl font-bold">SADNxAI</span>
           </div>
           {onClose && (
