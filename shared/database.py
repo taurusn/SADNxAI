@@ -327,6 +327,37 @@ class Database:
         """, job_id)
         return [dict(r) for r in rows]
 
+    @classmethod
+    async def update_single_classification(
+        cls,
+        job_id: UUID,
+        column_name: str,
+        classification_type_id: str,
+        generalization_level: int = 0,
+        reasoning: str = ""
+    ) -> Dict[str, Any]:
+        """
+        Update a single column's classification using UPSERT.
+        Uses ON CONFLICT to insert or update based on (job_id, column_name) unique constraint.
+        """
+        pool = await cls.get_pool()
+        async with pool.acquire() as conn:
+            result = await conn.fetchrow(
+                """
+                INSERT INTO classifications_on_jobs
+                    (job_id, column_name, classification_type_id, generalization_level, reasoning)
+                VALUES ($1, $2, $3, $4, $5)
+                ON CONFLICT (job_id, column_name)
+                DO UPDATE SET
+                    classification_type_id = EXCLUDED.classification_type_id,
+                    generalization_level = EXCLUDED.generalization_level,
+                    reasoning = EXCLUDED.reasoning
+                RETURNING id, column_name, classification_type_id, generalization_level, reasoning
+                """,
+                job_id, column_name, classification_type_id, generalization_level, reasoning
+            )
+            return dict(result) if result else {}
+
     # ============================================
     # VALIDATION CRUD
     # ============================================

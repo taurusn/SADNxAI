@@ -209,6 +209,43 @@ TOOLS = [
                 }
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "update_classification",
+            "description": "Update classification for a single column without affecting others. Use when user wants to change how a specific column is classified (e.g., 'change city to direct identifier').",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "column_name": {
+                        "type": "string",
+                        "description": "The exact column name to update (must exist in the uploaded file)"
+                    },
+                    "classification_type": {
+                        "type": "string",
+                        "enum": ["direct_identifier", "quasi_identifier", "linkage_identifier", "date_column", "sensitive_attribute"],
+                        "description": "New classification category for this column"
+                    },
+                    "technique": {
+                        "type": "string",
+                        "enum": ["SUPPRESS", "GENERALIZE", "PSEUDONYMIZE", "DATE_SHIFT", "KEEP"],
+                        "description": "Masking technique. Defaults based on classification_type if omitted: direct_identifier→SUPPRESS, quasi_identifier→GENERALIZE, linkage_identifier→PSEUDONYMIZE, date_column→DATE_SHIFT, sensitive_attribute→KEEP"
+                    },
+                    "generalization_level": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 3,
+                        "description": "Generalization level 0-3 (only relevant for quasi_identifier). 0=exact, 1=5yr/city, 2=10yr/province, 3=category/region"
+                    },
+                    "reasoning": {
+                        "type": "string",
+                        "description": "Updated explanation for why this column should be classified this way"
+                    }
+                },
+                "required": ["column_name", "classification_type"]
+            }
+        }
     }
 ]
 

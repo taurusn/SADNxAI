@@ -53,6 +53,7 @@ class ToolExecutor:
             "execute_pipeline": self._handle_execute_pipeline,
             "update_thresholds": self._handle_update_thresholds,
             "query_regulations": self._handle_query_regulations,
+            "update_classification": self._handle_update_classification,
         }
 
         handler = handlers.get(tool_name)
@@ -512,3 +513,129 @@ class ToolExecutor:
                 "success": False,
                 "error": f"Database query failed: {str(e)}"
             }
+
+    async def _handle_update_classification(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Handle update_classification tool call.
+        Updates a single column's classification without affecting others.
+        """
+        column_name = args.get("column_name")
+        classification_type = args.get("classification_type")
+        technique = args.get("technique")
+        generalization_level = args.get("generalization_level", 0)
+        reasoning = args.get("reasoning", "")
+
+        # Validation 1: Column name required
+        if not column_name:
+            return {"success": False, "error": "column_name is required"}
+
+        # Validation 2: Classification type required
+        if not classification_type:
+            return {"success": False, "error": "classification_type is required"}
+
+        # Validation 3: Column must exist in file
+        if column_name not in (self.session.columns or []):
+            return {
+                "success": False,
+                "error": f"Column '{column_name}' not found. Available: {self.session.columns}"
+            }
+
+        # Validation 4: Must have existing classification
+        if not self.session.classification:
+            return {
+                "success": False,
+                "error": "No classification exists. Use classify_columns first."
+            }
+
+        # Validation 5: Valid classification type
+        valid_types = ["direct_identifier", "quasi_identifier", "linkage_identifier",
+                       "date_column", "sensitive_attribute"]
+        if classification_type not in valid_types:
+            return {"success": False, "error": f"Invalid classification_type. Must be one of: {valid_types}"}
+
+        # Default technique based on classification type
+        type_to_technique = {
+            "direct_identifier": "SUPPRESS",
+            "quasi_identifier": "GENERALIZE",
+            "linkage_identifier": "PSEUDONYMIZE",
+            "date_column": "DATE_SHIFT",
+            "sensitive_attribute": "KEEP"
+        }
+        if not technique:
+            technique = type_to_technique[classification_type]
+
+        # Category list mapping
+        type_to_list = {
+            "direct_identifier": "direct_identifiers",
+            "quasi_identifier": "quasi_identifiers",
+            "linkage_identifier": "linkage_identifiers",
+            "date_column": "date_columns",
+            "sensitive_attribute": "sensitive_attributes"
+        }
+
+        # Step 1: Remove column from ALL category lists (it might be in one)
+        classification = self.session.classification
+        for list_name in type_to_list.values():
+            col_list = getattr(classification, list_name, [])
+            if column_name in col_list:
+                col_list.remove(column_name)
+
+        # Step 2: Add column to new category
+        target_list = getattr(classification, type_to_list[classification_type])
+        if column_name not in target_list:
+            target_list.append(column_name)
+
+        # Step 3: Update recommended_techniques
+        try:
+            classification.recommended_techniques[column_name] = MaskingTechnique(technique)
+        except ValueError:
+            classification.recommended_techniques[column_name] = MaskingTechnique.KEEP
+
+        # Step 4: Update reasoning if provided
+        if reasoning:
+            classification.reasoning[column_name] = reasoning
+
+        # Step 5: Update session
+        self.session.classification = classification
+
+        # Step 6: Update database
+        db_result = await self._update_single_classification_in_db(
+            column_name, classification_type, technique, generalization_level, reasoning
+        )
+
+        return {
+            "success": True,
+            "message": f"Updated '{column_name}' to {classification_type} ({technique})",
+            "column": column_name,
+            "new_classification": classification_type,
+            "technique": technique,
+            "db_updated": db_result.get("success", False)
+        }
+
+    async def _update_single_classification_in_db(
+        self, column_name: str, classification_type: str,
+        technique: str, generalization_level: int, reasoning: str
+    ) -> Dict[str, Any]:
+        """Update single column classification in PostgreSQL using UPSERT"""
+        from shared.database import Database
+        from uuid import UUID
+
+        try:
+            job_id = UUID(self.session.id)
+
+            # Ensure job exists
+            job = await Database.get_job(job_id)
+            if not job:
+                await Database.create_job(job_id, self.session.title)
+
+            result = await Database.update_single_classification(
+                job_id=job_id,
+                column_name=column_name,
+                classification_type_id=classification_type,
+                generalization_level=generalization_level,
+                reasoning=reasoning
+            )
+            return {"success": True, "result": result}
+        except Exception as e:
+            print(f"Failed to update classification in DB: {e}")
+            return {"success": False, "error": str(e)}
