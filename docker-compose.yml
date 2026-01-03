@@ -25,6 +25,7 @@ services:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - OLLAMA_URL=http://ollama:11434
       - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5:14b}
+      - OLLAMA_NATIVE_TOOLS=${OLLAMA_NATIVE_TOOLS:-true}
       - REDIS_URL=redis://redis:6379/0
       - DATABASE_URL=postgresql://sadnxai:${POSTGRES_PASSWORD:-sadnxai_secure_pass}@postgres:5432/sadnxai
       - MASKING_SERVICE_URL=http://masking-service:8001
