@@ -291,6 +291,12 @@ class OllamaAdapter:
                         if data.get("done", False):
                             tool_calls = None
 
+                            # Debug: Log response structure for native tools
+                            if self.use_native_tools:
+                                print(f"[Native Tools] use_native_tools={self.use_native_tools}")
+                                print(f"[Native Tools] message keys: {message.keys()}")
+                                print(f"[Native Tools] message.tool_calls: {message.get('tool_calls')}")
+
                             # Check for native tool calls first (Ollama 0.3.0+)
                             native_tool_calls = message.get("tool_calls")
                             if native_tool_calls and self.use_native_tools:
