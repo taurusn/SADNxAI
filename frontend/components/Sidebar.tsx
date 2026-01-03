@@ -1,7 +1,8 @@
 'use client';
 
 import { useStore } from '@/lib/store';
-import { Plus, MessageSquare, Trash2, Shield, X } from 'lucide-react';
+import { Plus, MessageSquare, Trash2, X } from 'lucide-react';
+import Image from 'next/image';
 
 interface SidebarProps {
   onClose?: () => void;
@@ -57,7 +58,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
       <div className="p-4 border-b border-sidebar-border">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
-            <Shield className="w-8 h-8 text-primary" />
+            <Image src="/logo.png" alt="SADNxAI Logo" width={32} height={32} />
             <span className="text-xl font-bold">SADNxAI</span>
           </div>
           {onClose && (
