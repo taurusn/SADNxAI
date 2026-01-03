@@ -31,19 +31,39 @@ export default function ChatArea() {
 
   if (!currentSession) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-gray-50">
-        <div className="text-center max-w-md px-4">
-          <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
-            <FileText className="w-8 h-8 text-primary" />
-          </div>
-          <h2 className="text-xl font-semibold text-gray-800 mb-2">
-            Welcome to SADNxAI
-          </h2>
-          <p className="text-gray-600 mb-6">
-            Start a new chat to anonymize your data. Upload a CSV file and our AI Privacy Consultant will guide you through the process.
-          </p>
-          <div className="text-sm text-gray-500">
-            Select an existing chat from the sidebar or create a new one.
+      <div className="flex-1 flex flex-col h-full bg-gray-50">
+        {/* Mobile header for welcome screen */}
+        <div className="flex md:hidden items-center justify-between px-4 py-3 border-b border-gray-200 bg-white">
+          <button
+            onClick={toggleSidebar}
+            className="p-2 -ml-2 rounded-lg hover:bg-gray-100 min-h-[44px] min-w-[44px] flex items-center justify-center"
+          >
+            <Menu className="w-6 h-6" />
+          </button>
+          <span className="font-semibold text-gray-900">SADNxAI</span>
+          <div className="w-10" />
+        </div>
+
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center max-w-md px-4">
+            <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
+              <FileText className="w-8 h-8 text-primary" />
+            </div>
+            <h2 className="text-xl font-semibold text-gray-800 mb-2">
+              Welcome to SADNxAI
+            </h2>
+            <p className="text-gray-600 mb-6">
+              Start a new chat to anonymize your data. Upload a CSV file and our AI Privacy Consultant will guide you through the process.
+            </p>
+            <div className="text-sm text-gray-500 hidden md:block">
+              Select an existing chat from the sidebar or create a new one.
+            </div>
+            <button
+              onClick={toggleSidebar}
+              className="md:hidden mt-2 px-4 py-3 bg-primary text-white rounded-lg min-h-[44px]"
+            >
+              Open Menu
+            </button>
           </div>
         </div>
       </div>
