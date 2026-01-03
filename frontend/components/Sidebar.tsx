@@ -1,7 +1,11 @@
 'use client';
 
 import { useStore } from '@/lib/store';
-import { Plus, MessageSquare, Trash2, Shield } from 'lucide-react';
+import { Plus, MessageSquare, Trash2, Shield, X } from 'lucide-react';
+
+interface SidebarProps {
+  onClose?: () => void;
+}
 
 const STATUS_COLORS: Record<string, string> = {
   idle: 'bg-gray-400',
@@ -15,7 +19,7 @@ const STATUS_COLORS: Record<string, string> = {
   failed: 'bg-red-400',
 };
 
-export default function Sidebar() {
+export default function Sidebar({ onClose }: SidebarProps) {
   const {
     sessions,
     currentSessionId,
@@ -51,9 +55,19 @@ export default function Sidebar() {
     <aside className="w-72 bg-sidebar text-white flex flex-col h-full">
       {/* Header */}
       <div className="p-4 border-b border-sidebar-border">
-        <div className="flex items-center gap-2 mb-4">
-          <Shield className="w-8 h-8 text-primary" />
-          <span className="text-xl font-bold">SADNxAI</span>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <Shield className="w-8 h-8 text-primary" />
+            <span className="text-xl font-bold">SADNxAI</span>
+          </div>
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="p-2 -mr-2 rounded-lg hover:bg-sidebar-light md:hidden min-h-[44px] min-w-[44px] flex items-center justify-center"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          )}
         </div>
 
         <button
@@ -77,9 +91,12 @@ export default function Sidebar() {
             {sessions.map((session) => (
               <div
                 key={session.id}
-                onClick={() => selectSession(session.id)}
+                onClick={() => {
+                  selectSession(session.id);
+                  onClose?.(); // Close sidebar on mobile after selection
+                }}
                 className={`
-                  group flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-colors
+                  group flex items-center gap-3 px-3 py-3 rounded-lg cursor-pointer transition-colors min-h-[48px]
                   ${currentSessionId === session.id
                     ? 'bg-sidebar-light'
                     : 'hover:bg-sidebar-border'
@@ -106,7 +123,7 @@ export default function Sidebar() {
 
                 <button
                   onClick={(e) => handleDeleteSession(e, session.id)}
-                  className="opacity-0 group-hover:opacity-100 p-1 hover:bg-sidebar-light rounded transition-all"
+                  className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 p-2 -mr-1 hover:bg-sidebar-light/50 rounded transition-all min-h-[44px] min-w-[44px] flex items-center justify-center"
                   title="Delete session"
                 >
                   <Trash2 className="w-4 h-4 text-gray-400" />

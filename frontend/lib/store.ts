@@ -16,6 +16,7 @@ interface AppState {
   isSending: boolean;
   error: string | null;
   pollingInterval: NodeJS.Timeout | null;
+  sidebarOpen: boolean;
 
   // Streaming State
   streamingContent: string;
@@ -33,6 +34,8 @@ interface AppState {
   clearError: () => void;
   startPolling: () => void;
   stopPolling: () => void;
+  toggleSidebar: () => void;
+  closeSidebar: () => void;
 }
 
 // Processing states that should trigger polling
@@ -47,6 +50,7 @@ export const useStore = create<AppState>((set, get) => ({
   isSending: false,
   error: null,
   pollingInterval: null,
+  sidebarOpen: false,
   streamingContent: '',
   streamingStatus: null,
   currentTool: null,
@@ -403,4 +407,8 @@ export const useStore = create<AppState>((set, get) => ({
       set({ pollingInterval: null });
     }
   },
+
+  // Sidebar toggle for mobile
+  toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
+  closeSidebar: () => set({ sidebarOpen: false }),
 }));

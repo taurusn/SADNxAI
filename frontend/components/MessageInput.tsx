@@ -53,7 +53,7 @@ export default function MessageInput() {
         type="button"
         onClick={() => fileInputRef.current?.click()}
         disabled={isDisabled}
-        className="p-2.5 text-gray-500 hover:text-primary hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        className="p-3 min-h-[48px] min-w-[48px] flex items-center justify-center text-gray-500 hover:text-primary hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         title="Upload CSV file"
       >
         <Paperclip className="w-5 h-5" />
@@ -81,7 +81,7 @@ export default function MessageInput() {
       <button
         type="submit"
         disabled={isDisabled || !message.trim()}
-        className="p-2.5 bg-primary text-white rounded-xl hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        className="p-3 min-h-[48px] min-w-[48px] flex items-center justify-center bg-primary text-white rounded-xl hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
       >
         <Send className="w-5 h-5" />
       </button>
