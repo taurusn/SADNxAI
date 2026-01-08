@@ -148,4 +148,42 @@ result = toon.decode(response) if is_toon else json.loads(response)
 
 ---
 
+## Implementation Status
+
+| Component | Status | File |
+|-----------|--------|------|
+| Ollama 0.13.1 pinned | DONE | `docker-compose.yml` |
+| Healthcheck added | DONE | `docker-compose.yml` |
+| Model: ministral-3:14b | DONE | `.env` |
+| Context: 32K configurable | DONE | `.env`, `ollama_adapter.py` |
+| TOON library added | DONE | `requirements.txt` |
+| TOON utilities module | DONE | `shared/toon_utils.py` |
+| Prompt builder updated | DONE | `ollama_adapter.py` |
+| TOON enabled by default | NO | Set `TOON_ENABLED=true` to enable |
+
+### Next Steps
+
+1. **Pull new model**: `docker exec ollama ollama pull ministral-3:14b`
+2. **Rebuild chat-service**: `docker compose build chat-service`
+3. **Restart services**: `docker compose up -d`
+4. **Test without TOON**: Verify ministral-3 tool calling works
+5. **Enable TOON**: Set `TOON_ENABLED=true` in `.env`
+6. **Benchmark**: Compare token usage before/after TOON
+
+### Rollback
+
+```bash
+# Revert model
+OLLAMA_MODEL=qwen2.5:14b
+
+# Disable TOON
+TOON_ENABLED=false
+
+# Restart
+docker compose up -d --force-recreate chat-service
+```
+
+---
+
 *Proposed: 2026-01-08*
+*Implemented: 2026-01-08*

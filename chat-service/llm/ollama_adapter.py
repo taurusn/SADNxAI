@@ -107,7 +107,7 @@ class OllamaAdapter:
                     "keep_alive": "10m",  # Keep model loaded for 10 minutes
                     "options": {
                         "temperature": 0.1,  # Low temp for structured JSON output
-                        "num_ctx": 24000,  # Full context window for comprehensive prompts
+                        "num_ctx": int(os.getenv("OLLAMA_NUM_CTX", "32000")),  # Configurable context window
                     }
                 }
 
@@ -251,7 +251,7 @@ class OllamaAdapter:
                 "keep_alive": "10m",
                 "options": {
                     "temperature": 0.1,
-                    "num_ctx": 24000,
+                    "num_ctx": int(os.getenv("OLLAMA_NUM_CTX", "32000")),  # Configurable context window
                 }
             }
 
@@ -351,6 +351,15 @@ class OllamaAdapter:
 
     def _build_system_prompt(self, session_context: Optional[Dict[str, Any]] = None) -> str:
         """Build system prompt with session context using state-based templates"""
+        # Import TOON utilities for efficient data encoding
+        from shared.toon_utils import (
+            format_sample_data_for_prompt,
+            format_classification_for_prompt,
+            format_validation_for_prompt,
+            get_format_info,
+            is_toon_enabled
+        )
+
         # Get status from context or default to idle
         status = "idle"
         if session_context and session_context.get("status"):
@@ -358,6 +367,11 @@ class OllamaAdapter:
 
         # Get state-based prompt (optimized for each state)
         prompt = get_prompt_for_state(status)
+
+        # Add TOON format info if enabled (helps LLM understand the data format)
+        format_info = get_format_info()
+        if format_info:
+            prompt += f"\n\n## DATA FORMAT\n{format_info}\n"
 
         # Add dynamic context based on state
         if session_context:
@@ -368,33 +382,48 @@ class OllamaAdapter:
                 columns = fi.get('columns', [])
                 prompt += f"Columns: {', '.join(columns)}\n"
 
-                # Format sample data as markdown table (compact)
+                # Format sample data (TOON or markdown table based on config)
                 sample_data = fi.get("sample_data")
                 if sample_data and isinstance(sample_data, list) and len(sample_data) > 0:
                     prompt += "\n### Sample Data:\n"
-                    if isinstance(sample_data[0], dict):
-                        headers = list(sample_data[0].keys())
-                        prompt += "| " + " | ".join(headers) + " |\n"
-                        prompt += "| " + " | ".join(["---"] * len(headers)) + " |\n"
-                        for row in sample_data[:5]:
-                            values = [str(row.get(h, ""))[:30] for h in headers]
-                            prompt += "| " + " | ".join(values) + " |\n"
+                    if is_toon_enabled():
+                        # Use TOON encoding for 55-60% token savings
+                        prompt += format_sample_data_for_prompt(sample_data)
+                        prompt += "\n"
+                    else:
+                        # Fallback to markdown table (original format)
+                        if isinstance(sample_data[0], dict):
+                            headers = list(sample_data[0].keys())
+                            prompt += "| " + " | ".join(headers) + " |\n"
+                            prompt += "| " + " | ".join(["---"] * len(headers)) + " |\n"
+                            for row in sample_data[:5]:
+                                values = [str(row.get(h, ""))[:30] for h in headers]
+                                prompt += "| " + " | ".join(values) + " |\n"
 
             # Add classification for PROPOSED/DISCUSSING states
             if status.lower() in ["proposed", "discussing"] and session_context.get("classification"):
                 cls = session_context['classification']
                 prompt += "\n## CURRENT CLASSIFICATION:\n"
-                prompt += f"- Direct IDs (SUPPRESS): {cls.get('direct_identifiers', [])}\n"
-                prompt += f"- Quasi-IDs (GENERALIZE): {cls.get('quasi_identifiers', [])}\n"
-                prompt += f"- Linkage IDs (PSEUDONYMIZE): {cls.get('linkage_identifiers', [])}\n"
-                prompt += f"- Dates (DATE_SHIFT): {cls.get('date_columns', [])}\n"
-                prompt += f"- Sensitive (KEEP): {cls.get('sensitive_attributes', [])}\n"
+                if is_toon_enabled():
+                    # Use TOON encoding for classification
+                    prompt += format_classification_for_prompt(cls)
+                    prompt += "\n"
+                else:
+                    # Fallback to text format (original)
+                    prompt += f"- Direct IDs (SUPPRESS): {cls.get('direct_identifiers', [])}\n"
+                    prompt += f"- Quasi-IDs (GENERALIZE): {cls.get('quasi_identifiers', [])}\n"
+                    prompt += f"- Linkage IDs (PSEUDONYMIZE): {cls.get('linkage_identifiers', [])}\n"
+                    prompt += f"- Dates (DATE_SHIFT): {cls.get('date_columns', [])}\n"
+                    prompt += f"- Sensitive (KEEP): {cls.get('sensitive_attributes', [])}\n"
 
             # Add validation results for FAILED state
             if status.lower() == "failed" and session_context.get("validation_result"):
                 vr = session_context["validation_result"]
                 prompt += "\n## VALIDATION RESULTS (FAILED):\n"
-                if isinstance(vr, dict):
+                if is_toon_enabled():
+                    prompt += format_validation_for_prompt(vr)
+                    prompt += "\n"
+                elif isinstance(vr, dict):
                     for metric, data in vr.items():
                         if isinstance(data, dict):
                             prompt += f"- {metric}: {data.get('value', '?')} (threshold: {data.get('threshold', '?')}, passed: {data.get('passed', '?')})\n"
@@ -403,7 +432,10 @@ class OllamaAdapter:
             if status.lower() == "completed" and session_context.get("validation_result"):
                 vr = session_context["validation_result"]
                 prompt += "\n## VALIDATION RESULTS (PASSED):\n"
-                if isinstance(vr, dict):
+                if is_toon_enabled():
+                    prompt += format_validation_for_prompt(vr)
+                    prompt += "\n"
+                elif isinstance(vr, dict):
                     for metric, data in vr.items():
                         if isinstance(data, dict):
                             prompt += f"- {metric}: {data.get('value', '?')} (threshold: {data.get('threshold', '?')})\n"
