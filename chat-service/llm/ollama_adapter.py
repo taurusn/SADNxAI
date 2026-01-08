@@ -276,6 +276,7 @@ class OllamaAdapter:
 
                 full_content = ""
                 accumulated_tool_calls = []  # Accumulate tool_calls from ANY chunk
+                seen_tool_signatures = set()  # Track unique tool calls to avoid duplicates
 
                 async for line in response.aiter_lines():
                     if not line:
@@ -290,21 +291,27 @@ class OllamaAdapter:
                             yield {"type": "token", "content": token}
 
                         # Check for tool_calls in EVERY chunk (not just when done)
-                        # Ollama sends tool_calls with done: false
+                        # Ollama sends tool_calls with done: false, may repeat in each chunk
                         if self.use_native_tools:
                             chunk_tool_calls = message.get("tool_calls")
                             if chunk_tool_calls:
-                                print(f"[Native Tools] Found {len(chunk_tool_calls)} tool call(s) in chunk")
                                 for tc in chunk_tool_calls:
                                     func = tc.get("function", {})
-                                    accumulated_tool_calls.append({
-                                        "id": f"call_{len(accumulated_tool_calls)}",
-                                        "type": "function",
-                                        "function": {
-                                            "name": func.get("name"),
-                                            "arguments": json.dumps(func.get("arguments", {}))
-                                        }
-                                    })
+                                    # Create signature to deduplicate repeated tool calls
+                                    args_str = json.dumps(func.get("arguments", {}), sort_keys=True)
+                                    signature = f"{func.get('name')}:{args_str}"
+
+                                    if signature not in seen_tool_signatures:
+                                        seen_tool_signatures.add(signature)
+                                        accumulated_tool_calls.append({
+                                            "id": f"call_{len(accumulated_tool_calls)}",
+                                            "type": "function",
+                                            "function": {
+                                                "name": func.get("name"),
+                                                "arguments": args_str
+                                            }
+                                        })
+                                        print(f"[Native Tools] New tool: {func.get('name')}")
 
                         # Check if done
                         if data.get("done", False):
