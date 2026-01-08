@@ -275,6 +275,8 @@ class OllamaAdapter:
                     return
 
                 full_content = ""
+                accumulated_tool_calls = []  # Accumulate tool_calls from ANY chunk
+
                 async for line in response.aiter_lines():
                     if not line:
                         continue
@@ -287,30 +289,35 @@ class OllamaAdapter:
                             full_content += token
                             yield {"type": "token", "content": token}
 
-                        # Check if done
-                        if data.get("done", False):
-                            tool_calls = None
-
-                            # Debug: Log response structure for native tools
-                            if self.use_native_tools:
-                                print(f"[Native Tools] use_native_tools={self.use_native_tools}")
-                                print(f"[Native Tools] message keys: {message.keys()}")
-                                print(f"[Native Tools] message.tool_calls: {message.get('tool_calls')}")
-
-                            # Check for native tool calls first (Ollama 0.3.0+)
-                            native_tool_calls = message.get("tool_calls")
-                            if native_tool_calls and self.use_native_tools:
-                                tool_calls = []
-                                for i, tc in enumerate(native_tool_calls):
+                        # Check for tool_calls in EVERY chunk (not just when done)
+                        # Ollama sends tool_calls with done: false
+                        if self.use_native_tools:
+                            chunk_tool_calls = message.get("tool_calls")
+                            if chunk_tool_calls:
+                                print(f"[Native Tools] Found {len(chunk_tool_calls)} tool call(s) in chunk")
+                                for tc in chunk_tool_calls:
                                     func = tc.get("function", {})
-                                    tool_calls.append({
-                                        "id": f"call_{i}",
+                                    accumulated_tool_calls.append({
+                                        "id": f"call_{len(accumulated_tool_calls)}",
                                         "type": "function",
                                         "function": {
                                             "name": func.get("name"),
                                             "arguments": json.dumps(func.get("arguments", {}))
                                         }
                                     })
+
+                        # Check if done
+                        if data.get("done", False):
+                            tool_calls = None
+
+                            # Debug: Log response structure
+                            if self.use_native_tools:
+                                print(f"[Native Tools] use_native_tools={self.use_native_tools}")
+                                print(f"[Native Tools] Accumulated tool_calls: {len(accumulated_tool_calls)}")
+
+                            # Use accumulated tool calls if we have any
+                            if accumulated_tool_calls and self.use_native_tools:
+                                tool_calls = accumulated_tool_calls
                                 print(f"[LLM Response] Native tool calls: {len(tool_calls)}")
                             else:
                                 # Fallback to regex extraction
