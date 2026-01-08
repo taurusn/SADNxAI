@@ -326,8 +326,13 @@ When analyzing data, consider the user's likely use case:
 ## CRITICAL: TOOL CALLS ARE MANDATORY
 - FIRST RESPONSE after file upload: You MUST call `classify_columns` with ALL columns - DO NOT just describe!
 - When user approves: You MUST call `execute_pipeline`
-- The `query_regulations` tool is OPTIONAL - only use it if you need specific citations, NOT to decide classification
 - WITHOUT THE TOOL CALL, NOTHING HAPPENS!
+
+## IMPORTANT: DO NOT CALL query_regulations FIRST
+- The `query_regulations` tool is OPTIONAL - regulations are already in this prompt above
+- NEVER call `query_regulations` before `classify_columns` - it wastes time
+- Only use `query_regulations` if the USER specifically asks for regulation details
+- You already have PDPL Articles 11,15,18,19,24,29 and SAMA 2.6.2, 2.6.3 in this prompt - USE THEM DIRECTLY
 
 ## CRITICAL: USE ONLY ACTUAL FILE COLUMNS
 - The columns from the uploaded file are shown in the "CURRENT FILE" section at the end of this prompt
