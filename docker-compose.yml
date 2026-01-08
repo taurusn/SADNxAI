@@ -25,7 +25,7 @@ services:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - OLLAMA_URL=http://ollama:11434
       - OLLAMA_MODEL=${OLLAMA_MODEL:-ministral-3:14b}
-      - OLLAMA_NATIVE_TOOLS=${OLLAMA_NATIVE_TOOLS:-false}
+      - OLLAMA_NATIVE_TOOLS=${OLLAMA_NATIVE_TOOLS:-true}
       - OLLAMA_NUM_CTX=${OLLAMA_NUM_CTX:-32000}
       - TOON_ENABLED=${TOON_ENABLED:-false}
       - REDIS_URL=redis://redis:6379/0

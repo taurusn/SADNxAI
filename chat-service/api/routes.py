@@ -54,9 +54,16 @@ async def _run_agentic_loop_streaming(
     terminal_tools: Optional[List[str]] = None
 ) -> AsyncGenerator[str, None]:
     """
-    Streaming version of agentic loop - yields SSE events as they happen.
-    Streams LLM response tokens in real-time like Claude chat.
+    Hybrid agentic loop - uses non-streaming for reliable tool calls,
+    simulates streaming for final text responses.
+
+    Strategy:
+    1. Use non-streaming chat_async() with native tools for reliable tool detection
+    2. If tool calls found -> execute them (no streaming needed)
+    3. If no tool calls -> simulate streaming by chunking the response text
     """
+    import asyncio
+
     terminal_tools = terminal_tools or []
     iteration = 0
 
@@ -67,23 +74,24 @@ async def _run_agentic_loop_streaming(
         # Yield thinking event
         yield _sse_event("thinking", {"content": f"Processing... (iteration {iteration})"})
 
-        # Stream LLM response token-by-token
-        content = ""
-        tool_calls_raw = None
+        # Use NON-STREAMING call for reliable native tool detection
+        llm_response = await llm_adapter.chat_async(messages, session_context)
+        content = llm_response.get("content", "")
+        tool_calls_raw = llm_response.get("tool_calls")
 
-        async for chunk in llm_adapter.chat_stream(messages, session_context):
-            if chunk["type"] == "token":
-                # Stream each token to frontend
-                yield _sse_event("text_delta", {"content": chunk["content"]})
-            elif chunk["type"] == "done":
-                content = chunk.get("content", "")
-                tool_calls_raw = chunk.get("tool_calls")
-
-        # If no tool calls, we're done - yield final message
+        # If no tool calls, we're done - simulate streaming for nice UX
         if not tool_calls_raw:
             print(f"[Agentic Loop] No tool calls, returning final response")
             final_msg = Message(role=MessageRole.ASSISTANT, content=content)
             session.messages.append(final_msg)
+
+            # Simulate streaming by sending words in chunks
+            words = content.split(' ')
+            for i, word in enumerate(words):
+                chunk = word + (' ' if i < len(words) - 1 else '')
+                yield _sse_event("text_delta", {"content": chunk})
+                await asyncio.sleep(0.02)  # Small delay for streaming effect
+
             yield _sse_event("message", {"content": content})
             break
 
