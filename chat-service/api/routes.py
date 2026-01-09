@@ -86,8 +86,10 @@ async def _run_agentic_loop_streaming(
         # If no tool calls, we're done - yield final message
         if not tool_calls_raw:
             print(f"[Agentic Loop] No tool calls, returning final response")
-            final_msg = Message(role=MessageRole.ASSISTANT, content=content)
-            session.messages.append(final_msg)
+            # Only append message if there's actual content
+            if content.strip():
+                final_msg = Message(role=MessageRole.ASSISTANT, content=content)
+                session.messages.append(final_msg)
             yield _sse_event("message", {"content": content})
             break
 
@@ -102,13 +104,15 @@ async def _run_agentic_loop_streaming(
                 function=tc["function"]
             ))
 
-        # Add assistant message WITH tool calls to session
-        assistant_msg = Message(
-            role=MessageRole.ASSISTANT,
-            content=content,
-            tool_calls=tool_calls
-        )
-        session.messages.append(assistant_msg)
+        # Add assistant message WITH tool calls to session (only if there's content)
+        # Native tool calling may return empty content - don't store empty messages
+        if content.strip():
+            assistant_msg = Message(
+                role=MessageRole.ASSISTANT,
+                content=content,
+                tool_calls=tool_calls
+            )
+            session.messages.append(assistant_msg)
 
         # Also add to messages list for next LLM call
         messages.append({

@@ -131,7 +131,7 @@ export default function ChatArea() {
         ) : (
           <>
             {currentSession.messages
-              .filter((msg) => msg.role === 'user' || msg.role === 'assistant')
+              .filter((msg) => (msg.role === 'user' || msg.role === 'assistant') && msg.content?.trim())
               .map((message, index) => (
                 <div
                   key={index}

@@ -321,17 +321,16 @@ export const useStore = create<AppState>((set, get) => ({
             break;
 
           case 'done':
-            // Add assistant message and update status
-            const assistantMessage: Message = {
-              role: 'assistant',
-              content: finalContent,
-            };
+            // Add assistant message and update status (only if there's content)
+            const newMessages = finalContent.trim()
+              ? [...session.messages, { role: 'assistant' as const, content: finalContent }]
+              : session.messages;
 
             set({
               currentSession: {
                 ...session,
                 status: event.status || session.status,
-                messages: [...session.messages, assistantMessage],
+                messages: newMessages,
               },
               isSending: false,
               streamingStatus: null,
