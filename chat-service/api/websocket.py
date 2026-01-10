@@ -136,10 +136,72 @@ async def _handle_chat_message(
 
     # Check for approval
     conversation = ConversationManager(session)
-    if conversation.detect_approval(message_text):
-        if session.classification is not None:
-            session.status = SessionStatus.APPROVED
-            print(f"[WS Chat] Approval detected, status -> APPROVED")
+    approval_detected = conversation.detect_approval(message_text)
+
+    if approval_detected and session.classification is not None:
+        session.status = SessionStatus.APPROVED
+        print(f"[WS Chat] Approval detected, status -> APPROVED")
+
+        # Auto-execute pipeline instead of relying on LLM to call execute_pipeline
+        print(f"[WS Chat] Auto-executing pipeline (bypassing LLM tool call)")
+
+        tool_executor = ToolExecutor(session)
+        await _send_event(session_id, websocket, "pipeline_start", {"message": "Starting anonymization pipeline..."}, msg_id)
+
+        # Execute the pipeline
+        tool_result = await tool_executor.execute("execute_pipeline", {"confirmed": True})
+
+        if tool_result.get("success"):
+            session.status = SessionStatus.MASKING
+
+            # Clean up old output/report files
+            if session.output_path and os.path.exists(session.output_path):
+                os.remove(session.output_path)
+                session.output_path = None
+            if session.report_path and os.path.exists(session.report_path):
+                os.remove(session.report_path)
+                session.report_path = None
+            session.validation_result = None
+
+            session_manager.update_session(session)
+
+            await _send_event(session_id, websocket, "pipeline_progress", {"stage": "masking", "message": "Applying anonymization techniques..."}, msg_id)
+
+            # Execute pipeline
+            pipeline_result = await pipeline_executor.execute(session)
+
+            if pipeline_result.get("error"):
+                session.status = SessionStatus.FAILED
+                await _send_event(session_id, websocket, "message", {"content": f"Pipeline execution failed: {pipeline_result['error']}"}, msg_id)
+            else:
+                if pipeline_result.get("validation_result"):
+                    session.validation_result = pipeline_result["validation_result"]
+                    session.output_path = pipeline_result.get("output_path")
+                    session.report_path = pipeline_result.get("report_path")
+
+                    if pipeline_result["validation_result"].passed:
+                        session.status = SessionStatus.COMPLETED
+                        await _send_event(session_id, websocket, "message", {
+                            "content": "Anonymization complete! Validation passed. You can now download the anonymized CSV and privacy report."
+                        }, msg_id)
+                    else:
+                        session.status = SessionStatus.FAILED
+                        failed = pipeline_result["validation_result"].failed_metrics
+                        await _send_event(session_id, websocket, "message", {
+                            "content": f"Validation failed for metrics: {', '.join(failed)}. You can still download the anonymized CSV and report. Would you like to adjust the generalization levels or thresholds and try again?"
+                        }, msg_id)
+        else:
+            await _send_event(session_id, websocket, "message", {"content": f"Pipeline preparation failed: {tool_result.get('error', 'Unknown error')}"}, msg_id)
+
+        # Save session and send final state
+        session_manager.update_session(session)
+        await _send_event(session_id, websocket, "session", _session_to_dict(session), msg_id)
+        await _send_event(session_id, websocket, "done", {
+            "status": session.status.value,
+            "has_classification": session.classification is not None,
+            "has_validation": session.validation_result is not None
+        }, msg_id)
+        return  # Skip LLM loop for approval
 
     # Get messages for LLM
     messages = conversation.get_messages_for_llm()
