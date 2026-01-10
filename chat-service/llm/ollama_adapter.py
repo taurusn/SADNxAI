@@ -236,10 +236,22 @@ class OllamaAdapter:
             role = msg.get("role", "user")
             if role == "system":
                 continue
-            full_messages.append({
+
+            # Build message dict preserving tool_calls for native tool calling
+            msg_dict = {
                 "role": role,
                 "content": msg.get("content", "")
-            })
+            }
+
+            # Include tool_calls if present (needed for native tool calling)
+            if msg.get("tool_calls"):
+                msg_dict["tool_calls"] = msg["tool_calls"]
+
+            # Include tool_call_id if present (for tool result messages)
+            if msg.get("tool_call_id"):
+                msg_dict["tool_call_id"] = msg["tool_call_id"]
+
+            full_messages.append(msg_dict)
 
         try:
             client = await self._get_client()
