@@ -20,8 +20,16 @@ const STATUS_BADGES: Record<string, { label: string; color: string; icon: any }>
   failed: { label: 'Failed', color: 'bg-red-100 text-red-700', icon: XCircle },
 };
 
+// WebSocket connection indicator component
+const WsIndicator = ({ connected }: { connected: boolean }) => (
+  <span
+    className={`w-2 h-2 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500'}`}
+    title={connected ? 'WebSocket connected' : 'WebSocket disconnected'}
+  />
+);
+
 export default function ChatArea() {
-  const { currentSession, currentSessionId, isSending, streamingContent, streamingStatus, currentTool, pendingMessages, toggleSidebar } = useStore();
+  const { currentSession, currentSessionId, isSending, streamingContent, streamingStatus, currentTool, pendingMessages, toggleSidebar, wsConnected } = useStore();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom on new messages, streaming content, or pending messages
@@ -97,6 +105,7 @@ export default function ChatArea() {
             <StatusIcon className="w-3 h-3" />
             {status.label}
           </span>
+          <WsIndicator connected={wsConnected} />
         </div>
 
         {/* Download buttons - show for both completed and failed (with output available) */}

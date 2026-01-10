@@ -1,9 +1,11 @@
 /**
  * Global State Store using Zustand
+ * Uses WebSocket for real-time chat communication
  */
 
 import { create } from 'zustand';
 import { api, Session, SessionDetail, Message, StreamEvent } from './api';
+import { wsManager, ServerMessage } from './websocket';
 
 interface AppState {
   // Sessions
@@ -15,14 +17,14 @@ interface AppState {
   isLoading: boolean;
   isSending: boolean;
   error: string | null;
-  pollingInterval: NodeJS.Timeout | null;
   sidebarOpen: boolean;
+  wsConnected: boolean;
 
   // Streaming State
   streamingContent: string;
   streamingStatus: string | null;
   currentTool: string | null;
-  pendingMessages: string[];  // Messages from completed iterations during streaming
+  pendingMessages: string[];
 
   // Actions
   loadSessions: () => Promise<void>;
@@ -32,14 +34,9 @@ interface AppState {
   uploadFile: (file: File) => Promise<void>;
   sendMessage: (message: string) => Promise<void>;
   clearError: () => void;
-  startPolling: () => void;
-  stopPolling: () => void;
   toggleSidebar: () => void;
   closeSidebar: () => void;
 }
-
-// Processing states that should trigger polling
-const PROCESSING_STATES = ['analyzing', 'masking', 'validating', 'approved'];
 
 export const useStore = create<AppState>((set, get) => ({
   // Initial state
@@ -49,8 +46,8 @@ export const useStore = create<AppState>((set, get) => ({
   isLoading: false,
   isSending: false,
   error: null,
-  pollingInterval: null,
   sidebarOpen: false,
+  wsConnected: false,
   streamingContent: '',
   streamingStatus: null,
   currentTool: null,
@@ -87,22 +84,39 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  // Select and load a session
+  // Select and load a session via WebSocket
   selectSession: async (sessionId: string) => {
-    // Stop any existing polling
-    get().stopPolling();
+    // Disconnect from previous WebSocket if different session
+    if (get().currentSessionId && get().currentSessionId !== sessionId) {
+      wsManager.disconnect();
+    }
 
-    set({ isLoading: true, error: null, currentSessionId: sessionId });
+    set({
+      isLoading: true,
+      error: null,
+      currentSessionId: sessionId,
+      wsConnected: false,
+    });
+
     try {
-      const session = await api.getSession(sessionId);
-      set({ currentSession: session, isLoading: false });
+      // Connect to WebSocket for this session
+      await wsManager.connect(sessionId);
 
-      // Start polling if in processing state
-      if (PROCESSING_STATES.includes(session.status)) {
-        get().startPolling();
-      }
+      // Set up WebSocket event handlers
+      setupWebSocketHandlers(set, get);
+
+      set({ wsConnected: true });
+
     } catch (err) {
-      set({ error: (err as Error).message, isLoading: false });
+      console.error('[Store] WebSocket connection failed, falling back to REST:', err);
+
+      // Fallback to REST API
+      try {
+        const session = await api.getSession(sessionId);
+        set({ currentSession: session, isLoading: false, wsConnected: false });
+      } catch (restErr) {
+        set({ error: (restErr as Error).message, isLoading: false });
+      }
     }
   },
 
@@ -110,21 +124,20 @@ export const useStore = create<AppState>((set, get) => ({
   deleteSession: async (sessionId: string) => {
     set({ isLoading: true, error: null });
     try {
-      await api.deleteSession(sessionId);
-
-      // Clear current session if it was deleted
+      // Disconnect WebSocket if deleting current session
       if (get().currentSessionId === sessionId) {
-        set({ currentSessionId: null, currentSession: null });
+        wsManager.disconnect();
+        set({ currentSessionId: null, currentSession: null, wsConnected: false });
       }
 
-      // Reload sessions
+      await api.deleteSession(sessionId);
       await get().loadSessions();
     } catch (err) {
       set({ error: (err as Error).message, isLoading: false });
     }
   },
 
-  // Upload file to current session with streaming
+  // Upload file to current session (still uses REST + SSE for file upload)
   uploadFile: async (file: File) => {
     const sessionId = get().currentSessionId;
     if (!sessionId) {
@@ -172,12 +185,10 @@ export const useStore = create<AppState>((set, get) => ({
             break;
 
           case 'thinking':
-            // New iteration starting - clear for fresh content
             set({ streamingStatus: 'thinking', streamingContent: '' });
             break;
 
           case 'text_delta':
-            // Append token to streaming content
             set((state) => ({
               streamingStatus: 'streaming',
               streamingContent: state.streamingContent + (event.content || ''),
@@ -186,25 +197,21 @@ export const useStore = create<AppState>((set, get) => ({
 
           case 'tool_call':
           case 'terminal_tool':
-            // Tool starting - save current content as pending message for this iteration
             set((state) => ({
               streamingStatus: 'tool',
               currentTool: event.tool || null,
-              // Save streamed content as a pending message (iteration complete)
               pendingMessages: state.streamingContent
                 ? [...state.pendingMessages, state.streamingContent]
                 : state.pendingMessages,
-              streamingContent: '', // Clear for next iteration
+              streamingContent: '',
             }));
             break;
 
           case 'tool_result':
-            // Tool done - ready for next iteration
             set({ streamingStatus: 'thinking', currentTool: null });
             break;
 
           case 'message':
-            // Final message - use this as the content
             finalContent = event.content || '';
             set({ streamingStatus: 'streaming', streamingContent: finalContent });
             break;
@@ -225,14 +232,16 @@ export const useStore = create<AppState>((set, get) => ({
               streamingStatus: null,
               streamingContent: '',
               currentTool: null,
-              pendingMessages: [], // Clear pending messages
+              pendingMessages: [],
             });
             break;
         }
       });
 
-      // Reload full session to get complete state
-      await get().selectSession(sessionId);
+      // Refresh session via WebSocket after upload
+      if (wsManager.isConnected()) {
+        wsManager.refreshSession();
+      }
       await get().loadSessions();
 
     } catch (err) {
@@ -246,7 +255,7 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  // Send chat message with streaming
+  // Send chat message via WebSocket
   sendMessage: async (message: string) => {
     const sessionId = get().currentSessionId;
     if (!sessionId) {
@@ -271,143 +280,230 @@ export const useStore = create<AppState>((set, get) => ({
       });
     }
 
-    try {
-      let finalContent = '';
+    // Send via WebSocket if connected
+    if (wsManager.isConnected()) {
+      wsManager.sendChat(message);
+      // Response handled by WebSocket event handlers
+    } else {
+      // Fallback to SSE
+      console.log('[Store] WebSocket not connected, falling back to SSE');
+      try {
+        let finalContent = '';
 
-      await api.sendMessageStream(sessionId, message, (event: StreamEvent) => {
-        const session = get().currentSession;
-        if (!session) return;
+        await api.sendMessageStream(sessionId, message, (event: StreamEvent) => {
+          const session = get().currentSession;
+          if (!session) return;
 
-        switch (event.type) {
-          case 'thinking':
-            // New iteration - clear for fresh content
-            set({ streamingStatus: 'thinking', streamingContent: '' });
-            break;
+          switch (event.type) {
+            case 'thinking':
+              set({ streamingStatus: 'thinking', streamingContent: '' });
+              break;
 
-          case 'text_delta':
-            // Append token to streaming content
-            set((state) => ({
-              streamingStatus: 'streaming',
-              streamingContent: state.streamingContent + (event.content || ''),
-            }));
-            break;
+            case 'text_delta':
+              set((state) => ({
+                streamingStatus: 'streaming',
+                streamingContent: state.streamingContent + (event.content || ''),
+              }));
+              break;
 
-          case 'tool_call':
-          case 'terminal_tool':
-            // Tool starting - save current content as pending message
-            set((state) => ({
-              streamingStatus: 'tool',
-              currentTool: event.tool || null,
-              pendingMessages: state.streamingContent
-                ? [...state.pendingMessages, state.streamingContent]
-                : state.pendingMessages,
-              streamingContent: '',
-            }));
-            break;
+            case 'tool_call':
+            case 'terminal_tool':
+              set((state) => ({
+                streamingStatus: 'tool',
+                currentTool: event.tool || null,
+                pendingMessages: state.streamingContent
+                  ? [...state.pendingMessages, state.streamingContent]
+                  : state.pendingMessages,
+                streamingContent: '',
+              }));
+              break;
 
-          case 'tool_result':
-            // Tool done
-            set({ streamingStatus: 'thinking', currentTool: null });
-            break;
+            case 'tool_result':
+              set({ streamingStatus: 'thinking', currentTool: null });
+              break;
 
-          case 'pipeline_start':
-          case 'pipeline_masking':
-            set({ streamingStatus: 'pipeline', streamingContent: event.message || 'Running pipeline...' });
-            break;
+            case 'pipeline_start':
+            case 'pipeline_masking':
+              set({ streamingStatus: 'pipeline', streamingContent: event.message || 'Running pipeline...' });
+              break;
 
-          case 'message':
-            finalContent = event.content || '';
-            set({ streamingStatus: 'streaming', streamingContent: finalContent });
-            break;
+            case 'message':
+              finalContent = event.content || '';
+              set({ streamingStatus: 'streaming', streamingContent: finalContent });
+              break;
 
-          case 'done':
-            // Add assistant message and update status (only if there's content)
-            const newMessages = finalContent.trim()
-              ? [...session.messages, { role: 'assistant' as const, content: finalContent }]
-              : session.messages;
+            case 'done':
+              const newMessages = finalContent.trim()
+                ? [...session.messages, { role: 'assistant' as const, content: finalContent }]
+                : session.messages;
 
-            set({
-              currentSession: {
-                ...session,
-                status: event.status || session.status,
-                messages: newMessages,
-              },
-              isSending: false,
-              streamingStatus: null,
-              streamingContent: '',
-              currentTool: null,
-              pendingMessages: [],
-            });
-            break;
-        }
-      });
+              set({
+                currentSession: {
+                  ...session,
+                  status: event.status || session.status,
+                  messages: newMessages,
+                },
+                isSending: false,
+                streamingStatus: null,
+                streamingContent: '',
+                currentTool: null,
+                pendingMessages: [],
+              });
+              break;
+          }
+        });
 
-      // Reload full session to get complete state (validation results, etc)
-      await get().selectSession(sessionId);
-      await get().loadSessions();
+        await get().loadSessions();
 
-    } catch (err) {
-      set({
-        error: (err as Error).message,
-        isSending: false,
-        streamingStatus: null,
-        streamingContent: '',
-        currentTool: null,
-      });
+      } catch (err) {
+        set({
+          error: (err as Error).message,
+          isSending: false,
+          streamingStatus: null,
+          streamingContent: '',
+          currentTool: null,
+        });
+      }
     }
   },
 
   // Clear error
   clearError: () => set({ error: null }),
 
-  // Start polling for session updates (when in processing state)
-  startPolling: () => {
-    const existing = get().pollingInterval;
-    if (existing) return; // Already polling
-
-    const interval = setInterval(async () => {
-      const sessionId = get().currentSessionId;
-      const currentSession = get().currentSession;
-
-      if (!sessionId || !currentSession) {
-        get().stopPolling();
-        return;
-      }
-
-      // Only poll if in a processing state
-      if (!PROCESSING_STATES.includes(currentSession.status)) {
-        get().stopPolling();
-        return;
-      }
-
-      try {
-        const session = await api.getSession(sessionId);
-        set({ currentSession: session });
-
-        // Stop polling if no longer in processing state
-        if (!PROCESSING_STATES.includes(session.status)) {
-          get().stopPolling();
-          // Also refresh sessions list
-          get().loadSessions();
-        }
-      } catch (err) {
-        console.error('Polling error:', err);
-      }
-    }, 2000); // Poll every 2 seconds
-
-    set({ pollingInterval: interval });
-  },
-
-  // Stop polling
-  stopPolling: () => {
-    const interval = get().pollingInterval;
-    if (interval) {
-      clearInterval(interval);
-      set({ pollingInterval: null });
-    }
-  },
-
   // Sidebar toggle for mobile
   toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
   closeSidebar: () => set({ sidebarOpen: false }),
 }));
+
+
+/**
+ * Set up WebSocket event handlers
+ * Called when connecting to a new session
+ */
+function setupWebSocketHandlers(
+  set: (partial: Partial<AppState> | ((state: AppState) => Partial<AppState>)) => void,
+  get: () => AppState
+) {
+  // Clear any existing handlers to prevent duplicates
+  wsManager.clearHandlers();
+
+  // Connection state
+  wsManager.onConnection((connected) => {
+    set({ wsConnected: connected });
+    if (!connected) {
+      console.log('[Store] WebSocket disconnected');
+    }
+  });
+
+  // Session state updates
+  wsManager.on('session', (msg: ServerMessage) => {
+    const sessionData = msg.payload;
+    set({
+      currentSession: sessionData as SessionDetail,
+      isLoading: false,
+    });
+  });
+
+  // Connected event
+  wsManager.on('connected', (msg: ServerMessage) => {
+    console.log('[Store] WebSocket connected to session:', msg.payload.session_id);
+    set({ isLoading: false });
+  });
+
+  // Thinking indicator
+  wsManager.on('thinking', () => {
+    set({ streamingStatus: 'thinking', streamingContent: '' });
+  });
+
+  // Token streaming
+  wsManager.on('token', (msg: ServerMessage) => {
+    set((state) => ({
+      streamingStatus: 'streaming',
+      streamingContent: state.streamingContent + (msg.payload.content || ''),
+    }));
+  });
+
+  // Tool execution start
+  wsManager.on('tool_start', (msg: ServerMessage) => {
+    set((state) => ({
+      streamingStatus: 'tool',
+      currentTool: msg.payload.tool || null,
+      pendingMessages: state.streamingContent
+        ? [...state.pendingMessages, state.streamingContent]
+        : state.pendingMessages,
+      streamingContent: '',
+    }));
+  });
+
+  // Tool execution end
+  wsManager.on('tool_end', () => {
+    set({ streamingStatus: 'thinking', currentTool: null });
+  });
+
+  // Pipeline events
+  wsManager.on('pipeline_start', (msg: ServerMessage) => {
+    set({
+      streamingStatus: 'pipeline',
+      streamingContent: msg.payload.message || 'Starting pipeline...',
+    });
+  });
+
+  wsManager.on('pipeline_progress', (msg: ServerMessage) => {
+    set({
+      streamingStatus: 'pipeline',
+      streamingContent: msg.payload.message || 'Running pipeline...',
+    });
+  });
+
+  // Final message content
+  wsManager.on('message', (msg: ServerMessage) => {
+    const content = msg.payload.content || '';
+    set({
+      streamingStatus: 'streaming',
+      streamingContent: content,
+    });
+  });
+
+  // Done event - finalize the response
+  wsManager.on('done', (msg: ServerMessage) => {
+    const session = get().currentSession;
+    const streamingContent = get().streamingContent;
+
+    if (session && streamingContent.trim()) {
+      // Add assistant message from streaming content
+      const newMessages = [
+        ...session.messages,
+        { role: 'assistant' as const, content: streamingContent },
+      ];
+
+      set({
+        currentSession: {
+          ...session,
+          status: msg.payload.status || session.status,
+          messages: newMessages,
+        },
+      });
+    }
+
+    set({
+      isSending: false,
+      streamingStatus: null,
+      streamingContent: '',
+      currentTool: null,
+      pendingMessages: [],
+    });
+
+    // Refresh sessions list
+    get().loadSessions();
+  });
+
+  // Error handling
+  wsManager.on('error', (msg: ServerMessage) => {
+    console.error('[Store] WebSocket error:', msg.payload.message);
+    set({
+      error: msg.payload.message,
+      isSending: false,
+      streamingStatus: null,
+    });
+  });
+}

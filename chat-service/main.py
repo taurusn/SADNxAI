@@ -13,6 +13,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.routes import router
+from api.websocket import router as ws_router
 
 # Create FastAPI app
 app = FastAPI(
@@ -37,6 +38,7 @@ app.add_middleware(
 
 # Include routes
 app.include_router(router)
+app.include_router(ws_router, prefix="/api")
 
 
 @app.get("/health")
@@ -64,6 +66,7 @@ async def startup_event():
     print(f"  Masking Service: {os.getenv('MASKING_SERVICE_URL', 'http://localhost:8001')}")
     print(f"  Validation Service: {os.getenv('VALIDATION_SERVICE_URL', 'http://localhost:8002')}")
     print(f"  LLM Mock Mode: {os.getenv('LLM_MOCK_MODE', 'false')}")
+    print(f"  WebSocket: /api/ws/{{session_id}}")
 
 
 if __name__ == "__main__":
