@@ -76,20 +76,27 @@ async def _run_agentic_loop_streaming(
         tool_calls_raw = None
 
         async for chunk in llm_adapter.chat_stream(messages, session_context):
+            print(f"[Routes] Received chunk type={chunk['type']}")
             if chunk["type"] == "token":
                 # Stream each token to frontend in real-time
                 yield _sse_event("text_delta", {"content": chunk["content"]})
             elif chunk["type"] == "done":
                 content = chunk.get("content", "")
                 tool_calls_raw = chunk.get("tool_calls")
+                print(f"[Routes] DONE chunk: content_len={len(content)}, tool_calls={len(tool_calls_raw) if tool_calls_raw else 0}")
 
         # If no tool calls, we're done - yield final message
         if not tool_calls_raw:
             print(f"[Agentic Loop] No tool calls, returning final response")
+            print(f"[Agentic Loop] Content: '{content[:100]}...' " if len(content) > 100 else f"[Agentic Loop] Content: '{content}'")
             # Only append message if there's actual content
             if content.strip():
                 final_msg = Message(role=MessageRole.ASSISTANT, content=content)
                 session.messages.append(final_msg)
+                print(f"[Session] ✓ Stored assistant message ({len(content)} chars)")
+            else:
+                print(f"[Session] ✗ SKIPPED empty assistant message")
+            print(f"[SSE->Frontend] Sending 'message' event")
             yield _sse_event("message", {"content": content})
             break
 
@@ -113,6 +120,9 @@ async def _run_agentic_loop_streaming(
                 tool_calls=tool_calls
             )
             session.messages.append(assistant_msg)
+            print(f"[Session] ✓ Stored assistant message with tool_calls ({len(content)} chars)")
+        else:
+            print(f"[Session] ✗ SKIPPED empty assistant message (had {len(tool_calls)} tool calls)")
 
         # Also add to messages list for next LLM call
         messages.append({

@@ -278,17 +278,25 @@ class OllamaAdapter:
                 accumulated_tool_calls = []  # Accumulate tool_calls from ANY chunk
                 seen_tool_signatures = set()  # Track unique tool calls to avoid duplicates
 
+                chunk_count = 0
                 async for line in response.aiter_lines():
                     if not line:
                         continue
                     try:
                         data = json.loads(line)
+                        chunk_count += 1
                         message = data.get("message", {})
                         token = message.get("content", "")
+                        is_done = data.get("done", False)
+
+                        # Log every chunk for debugging
+                        chunk_tool_calls_present = bool(message.get("tool_calls"))
+                        print(f"[Ollama Chunk #{chunk_count}] done={is_done}, token_len={len(token)}, has_tool_calls={chunk_tool_calls_present}")
 
                         if token:
                             full_content += token
                             yield {"type": "token", "content": token}
+                            print(f"[SSE] Yielded token: {token[:50]}{'...' if len(token) > 50 else ''}")
 
                         # Check for tool_calls in EVERY chunk (not just when done)
                         # Ollama sends tool_calls with done: false, may repeat in each chunk
@@ -339,6 +347,10 @@ class OllamaAdapter:
                                     func = tc.get("function", {})
                                     print(f"[LLM Response] Tool: {func.get('name', 'unknown')}")
                                 full_content = self._clean_response(full_content)
+
+                            # Log final yield
+                            print(f"[SSE] Yielding DONE: content_len={len(full_content)}, tool_calls={len(tool_calls) if tool_calls else 0}")
+                            print(f"[SSE] Content preview: '{full_content[:100]}...' " if len(full_content) > 100 else f"[SSE] Content: '{full_content}'")
 
                             yield {
                                 "type": "done",
