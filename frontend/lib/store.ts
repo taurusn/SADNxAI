@@ -86,29 +86,26 @@ export const useStore = create<AppState>((set, get) => ({
 
   // Select and load a session via WebSocket
   selectSession: async (sessionId: string) => {
-    // Disconnect from previous WebSocket if different session
-    if (get().currentSessionId && get().currentSessionId !== sessionId) {
-      wsManager.disconnect();
-    }
-
     set({
       isLoading: true,
       error: null,
       currentSessionId: sessionId,
+      currentSession: null, // Clear current session while loading
       wsConnected: false,
     });
 
     try {
       // Set up WebSocket event handlers BEFORE connecting
-      // so we don't miss the initial 'session' event
+      // This clears old handlers and sets up new ones
       setupWebSocketHandlers(set, get);
 
-      // Connect to WebSocket for this session
+      // Connect to WebSocket - this closes any previous connection
+      // but preserves our newly set up handlers
       await wsManager.connect(sessionId);
 
       set({ wsConnected: true });
 
-      // Request fresh session state in case we missed it
+      // Request fresh session state to ensure we have it
       wsManager.refreshSession();
 
     } catch (err) {

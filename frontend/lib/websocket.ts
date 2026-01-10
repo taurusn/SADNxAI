@@ -79,9 +79,9 @@ class WebSocketManager {
         return;
       }
 
-      // Disconnect from previous session
+      // Close previous connection (but keep handlers - they were just set up)
       if (this.sessionId && this.sessionId !== sessionId) {
-        this.disconnect();
+        this.closeConnection();
       }
 
       this.sessionId = sessionId;
@@ -141,22 +141,31 @@ class WebSocketManager {
   }
 
   /**
-   * Disconnect from the current session
+   * Close the WebSocket connection without clearing handlers
+   * Used internally when switching sessions
    */
-  disconnect(): void {
-    console.log('[WS] Disconnecting');
+  private closeConnection(): void {
+    console.log('[WS] Closing connection');
     this.shouldReconnect = false;
     this.stopHeartbeat();
     this.clearReconnectTimeout();
 
     if (this.ws) {
-      this.ws.close(1000, 'Client disconnect');
+      this.ws.close(1000, 'Switching session');
       this.ws = null;
     }
 
     this.sessionId = null;
     this.messageQueue = [];
     this.clearPendingRequests();
+  }
+
+  /**
+   * Disconnect from the current session and clear all handlers
+   */
+  disconnect(): void {
+    console.log('[WS] Disconnecting');
+    this.closeConnection();
     this.clearHandlers();
   }
 
