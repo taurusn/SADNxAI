@@ -135,11 +135,16 @@ async def _handle_chat_message(
     session.messages.append(user_msg)
 
     # Check for approval
+    print(f"[WS Chat] Session status: {session.status.value}, has_classification: {session.classification is not None}")
     conversation = ConversationManager(session)
-    if conversation.detect_approval(message_text):
+    approval_detected = conversation.detect_approval(message_text)
+    print(f"[WS Chat] Approval detected: {approval_detected}, message: '{message_text[:50]}...'")
+    if approval_detected:
         if session.classification is not None:
             session.status = SessionStatus.APPROVED
-            print(f"[WS Chat] Approval detected, status -> APPROVED")
+            print(f"[WS Chat] Status changed to APPROVED")
+        else:
+            print(f"[WS Chat] Cannot approve - no classification yet")
 
     # Get messages for LLM
     messages = conversation.get_messages_for_llm()
