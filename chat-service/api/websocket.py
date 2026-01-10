@@ -274,14 +274,20 @@ async def _handle_chat_message(
             break
 
     # Handle execute_pipeline if called
+    print(f"[WS Pipeline] terminal_tool_info={terminal_tool_info}")
     if terminal_tool_info and terminal_tool_info["tool_name"] == "execute_pipeline":
+        print(f"[WS Pipeline] Executing pipeline...")
         tc = terminal_tool_info["tool_call"]
         args = terminal_tool_info["args"]
+        print(f"[WS Pipeline] tc={tc}, args={args}")
 
         await _send_event(session_id, websocket, "pipeline_start", {"message": "Starting anonymization pipeline..."}, msg_id)
+        print(f"[WS Pipeline] Sent pipeline_start event")
 
         # Execute the tool
+        print(f"[WS Pipeline] Calling tool_executor.execute...")
         tool_result = await tool_executor.execute("execute_pipeline", args)
+        print(f"[WS Pipeline] tool_result={tool_result}")
 
         # Add tool result
         tool_result_msg = Message(
