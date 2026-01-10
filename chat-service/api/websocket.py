@@ -172,6 +172,8 @@ async def _handle_chat_message(
         # If no tool calls, we're done
         if not tool_calls_raw:
             print(f"[WS Agentic Loop] No tool calls, final response")
+            print(f"[WS Agentic Loop] Content length: {len(content)} chars")
+            print(f"[WS Agentic Loop] Content preview: {content[:200]}..." if len(content) > 200 else f"[WS Agentic Loop] Content: {content}")
             if content.strip():
                 final_msg = Message(role=MessageRole.ASSISTANT, content=content)
                 session.messages.append(final_msg)
