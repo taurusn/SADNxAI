@@ -45,8 +45,10 @@ SADNxAI (SADN x AI) is a Saudi-focused data anonymization platform for banking a
 |------|---------|
 | `main.py` | FastAPI app entry, CORS config |
 | `api/routes.py` | REST endpoints: sessions, upload, chat, thresholds, downloads |
+| `api/websocket.py` | WebSocket endpoint for real-time chat streaming |
 | `core/conversation.py` | Conversation state machine, approval detection |
 | `core/session.py` | Session CRUD with Redis |
+| `core/ws_manager.py` | WebSocket connection manager per session |
 | `llm/adapter.py` | LLM provider abstraction (Ollama/Claude/Mock) |
 | `llm/ollama_adapter.py` | Ollama integration with tool calling, retry logic |
 | `llm/tools.py` | Tool executor for classify_columns, execute_pipeline, update_thresholds |
@@ -82,12 +84,13 @@ SADNxAI (SADN x AI) is a Saudi-focused data anonymization platform for banking a
 | File | Purpose |
 |------|---------|
 | `app/page.tsx` | Main page layout |
-| `components/ChatArea.tsx` | Message display, validation results, download buttons |
+| `components/ChatArea.tsx` | Message display, validation results, download buttons, WS indicator |
 | `components/FileUpload.tsx` | CSV upload component |
 | `components/MessageInput.tsx` | Chat input |
 | `components/Sidebar.tsx` | Session list |
-| `lib/api.ts` | API client |
-| `lib/store.ts` | Zustand state management |
+| `lib/api.ts` | API client (REST + SSE) |
+| `lib/store.ts` | Zustand state management with WebSocket integration |
+| `lib/websocket.ts` | WebSocket manager singleton with auto-reconnect |
 
 ## Running the Project
 
@@ -416,3 +419,132 @@ validation_on_jobs (job_id, validation_id, value, passed, details JSONB)
 2. **Observability**: Structured logging (structlog), error SSE events
 3. **Scalability**: Resource limits, connection pooling, Redis TTL
 4. **Testing**: Unit tests for engines, integration tests for pipeline
+
+---
+
+## WebSocket Implementation (2025-01-10)
+
+### Overview
+
+Replaced polling-based session updates with real-time WebSocket communication. The frontend now maintains a persistent bidirectional connection to the chat-service for streaming LLM responses and session state updates.
+
+### New Files
+
+| File | Purpose |
+|------|---------|
+| `chat-service/core/ws_manager.py` | Connection manager - tracks WebSocket connections per session, thread-safe with asyncio lock |
+| `chat-service/api/websocket.py` | WebSocket endpoint `/api/ws/{session_id}` - full agentic loop implementation |
+| `frontend/lib/websocket.ts` | WebSocket manager singleton - auto-reconnect, exponential backoff, message queue |
+
+### Modified Files
+
+| File | Changes |
+|------|---------|
+| `chat-service/main.py` | Added WebSocket router import and inclusion |
+| `frontend/lib/store.ts` | Replaced SSE with WebSocket for chat, removed polling, added `wsConnected` state |
+| `frontend/components/ChatArea.tsx` | Added WebSocket connection indicator (green/red dot) |
+
+### WebSocket Protocol
+
+**Client → Server:**
+```json
+{
+  "type": "chat" | "ping" | "get_session",
+  "payload": { "message": "..." },
+  "id": "correlation-id"
+}
+```
+
+**Server → Client:**
+```json
+{
+  "type": "connected" | "session" | "token" | "thinking" | "tool_start" | "tool_end" | "pipeline_start" | "pipeline_progress" | "message" | "done" | "error" | "pong",
+  "payload": { ... },
+  "id": "correlation-id",
+  "timestamp": 1234567890.123
+}
+```
+
+### Key Features
+
+- **Auto-reconnect**: Exponential backoff (1s, 2s, 4s... up to 30s), max 10 attempts
+- **Message queue**: Messages queued when offline, flushed on reconnect
+- **Heartbeat**: Ping/pong every 30 seconds to keep connection alive
+- **SSE fallback**: Falls back to SSE when WebSocket fails
+- **Session persistence**: Messages stored in Redis, available on reconnect
+
+### Deployment
+
+After code changes, rebuild and restart services:
+```bash
+docker compose up --build -d chat-service frontend
+```
+
+---
+
+## Investigation Findings (2025-01-10)
+
+### Issue: LLM Hallucinating Error Message
+
+**Symptom**: When user said "proceed" to approve classification, the LLM output:
+```
+Error: {"error":"unexpected end of JSON input"}
+```
+Instead of calling `execute_pipeline` tool.
+
+**Root Cause**: The LLM (ministral-3:14b) hallucinated an error message in its text response instead of making a proper tool call. This is a model behavior issue where smaller models don't reliably follow tool call format.
+
+**Solution**: Use qwen2.5:14b or Claude for more reliable tool calling. The retry logic in `ollama_adapter.py` helps but cannot fully solve model-level issues.
+
+### Issue: Race Condition - Handlers Set Up After Connect
+
+**Symptom**: New chat text box not appearing, missing session state
+
+**Root Cause**: In `store.ts`, `setupWebSocketHandlers()` was called AFTER `wsManager.connect()`, causing the initial `session` event to be missed.
+
+**Fix**: Setup handlers BEFORE connecting, add `refreshSession()` after connect as safety net:
+```typescript
+selectSession: async (sessionId: string) => {
+  setupWebSocketHandlers(set, get); // BEFORE connect
+  await wsManager.connect(sessionId);
+  wsManager.refreshSession(); // Safety net
+}
+```
+
+### Issue: Handlers Cleared When Switching Sessions
+
+**Symptom**: Clicking one chat opens another, sidebar selection bugged
+
+**Root Cause**: `connect()` internally called `disconnect()` which cleared newly set up handlers
+
+**Fix**: Created separate `closeConnection()` method that closes socket but preserves handlers:
+```typescript
+private closeConnection(): void {
+  // Closes socket but KEEPS handlers
+}
+
+disconnect(): void {
+  this.closeConnection();
+  this.clearHandlers(); // Also clears handlers
+}
+```
+
+### Issue: Empty Message Bubbles ("Loading Clouds")
+
+**Symptom**: Empty assistant message bubbles appearing in UI
+
+**Root Cause**: Native tool calling may return `tool_calls` with empty `content`. Backend stored empty assistant messages, frontend rendered them as bubbles.
+
+**Fix** (commit 33feece):
+- Backend: Skip storing empty assistant messages in session
+- Frontend: Filter out empty messages when rendering
+- Frontend: Don't add empty messages on 'done' event
+
+### Known Issues (TODO)
+
+| Issue | Description | Status |
+|-------|-------------|--------|
+| WebSocket error 1006 | Connection rejected if new code not deployed | Deploy required |
+| LLM tool call reliability | Smaller models don't reliably follow tool format | Use qwen2.5:14b+ |
+| No WebSocket auth | WebSocket connections not authenticated | TODO |
+| Connection indicator | Red dot shown when WS fails, may confuse users | Consider better UX |
