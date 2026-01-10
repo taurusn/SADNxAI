@@ -99,13 +99,17 @@ export const useStore = create<AppState>((set, get) => ({
     });
 
     try {
+      // Set up WebSocket event handlers BEFORE connecting
+      // so we don't miss the initial 'session' event
+      setupWebSocketHandlers(set, get);
+
       // Connect to WebSocket for this session
       await wsManager.connect(sessionId);
 
-      // Set up WebSocket event handlers
-      setupWebSocketHandlers(set, get);
-
       set({ wsConnected: true });
+
+      // Request fresh session state in case we missed it
+      wsManager.refreshSession();
 
     } catch (err) {
       console.error('[Store] WebSocket connection failed, falling back to REST:', err);
