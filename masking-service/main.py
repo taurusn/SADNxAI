@@ -6,6 +6,10 @@ FastAPI service for data anonymization techniques
 import os
 import sys
 
+# Service version - update this when deploying changes
+SERVICE_VERSION = "1.1.0"
+BUILD_DATE = "2025-01-10"
+
 # Add parent directory to path for shared module
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -46,7 +50,10 @@ async def startup_event():
     ]
     for directory in directories:
         os.makedirs(directory, exist_ok=True)
-    print(f"Masking Service started. Storage path: {storage_path}")
+    print("=" * 60)
+    print(f"  Masking Service v{SERVICE_VERSION} (built {BUILD_DATE})")
+    print(f"  Storage path: {storage_path}")
+    print("=" * 60)
 
 
 if __name__ == "__main__":

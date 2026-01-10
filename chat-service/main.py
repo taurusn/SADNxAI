@@ -6,6 +6,10 @@ Main orchestration service with LLM integration
 import os
 import sys
 
+# Service version - update this when deploying changes
+SERVICE_VERSION = "1.1.0-ws"
+BUILD_DATE = "2025-01-10"
+
 # Add parent directory to path for shared module
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -60,13 +64,16 @@ async def startup_event():
     for directory in directories:
         os.makedirs(directory, exist_ok=True)
 
-    print("Chat Service started")
+    print("=" * 60)
+    print(f"  Chat Service v{SERVICE_VERSION} (built {BUILD_DATE})")
+    print("=" * 60)
     print(f"  Storage path: {storage_path}")
     print(f"  Redis URL: {os.getenv('REDIS_URL', 'redis://localhost:6379/0')}")
     print(f"  Masking Service: {os.getenv('MASKING_SERVICE_URL', 'http://localhost:8001')}")
     print(f"  Validation Service: {os.getenv('VALIDATION_SERVICE_URL', 'http://localhost:8002')}")
     print(f"  LLM Mock Mode: {os.getenv('LLM_MOCK_MODE', 'false')}")
     print(f"  WebSocket: /api/ws/{{session_id}}")
+    print("=" * 60)
 
 
 if __name__ == "__main__":

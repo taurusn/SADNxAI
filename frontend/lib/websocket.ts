@@ -3,6 +3,10 @@
  * Handles real-time communication with the chat service
  */
 
+// Frontend version - update this when deploying changes
+const FRONTEND_VERSION = '1.1.0-ws';
+const BUILD_DATE = '2025-01-10';
+
 // Determine WebSocket URL based on environment
 const getWsUrl = (): string => {
   if (typeof window === 'undefined') return '';
@@ -89,6 +93,7 @@ class WebSocketManager {
       this.isConnecting = true;
 
       const wsUrl = `${getWsUrl()}/${sessionId}`;
+      console.log(`[WS] Frontend v${FRONTEND_VERSION} (built ${BUILD_DATE})`);
       console.log(`[WS] Connecting to ${wsUrl}`);
 
       try {
