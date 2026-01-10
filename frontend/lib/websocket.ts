@@ -11,16 +11,26 @@ const BUILD_DATE = '2025-01-10';
 const getWsUrl = (): string => {
   if (typeof window === 'undefined') return '';
 
-  const isProduction = window.location.hostname !== 'localhost';
+  // Get API URL from environment (set at build time)
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || '';
 
-  if (isProduction) {
-    // In production, use relative path with wss://
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    return `${protocol}//${window.location.host}/api/ws`;
+  if (apiUrl) {
+    // Convert HTTP API URL to WebSocket URL
+    // https://sadnxaiapi.sadn.site/api -> wss://sadnxaiapi.sadn.site/api/ws
+    const wsUrl = apiUrl
+      .replace('https://', 'wss://')
+      .replace('http://', 'ws://');
+    return `${wsUrl}/ws`;
   }
 
-  // Local development
-  return 'ws://localhost:8000/api/ws';
+  // Fallback for local development
+  if (window.location.hostname === 'localhost') {
+    return 'ws://localhost:8000/api/ws';
+  }
+
+  // Fallback to same host (won't work if API is on different domain)
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${protocol}//${window.location.host}/api/ws`;
 };
 
 export interface ServerMessage {
