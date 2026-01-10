@@ -245,7 +245,26 @@ class OllamaAdapter:
 
             # Include tool_calls if present (needed for native tool calling)
             if msg.get("tool_calls"):
-                msg_dict["tool_calls"] = msg["tool_calls"]
+                # Ollama expects arguments as object, not string
+                # OpenAI format has arguments as JSON string, need to parse it
+                tool_calls = []
+                for tc in msg["tool_calls"]:
+                    tc_copy = {
+                        "id": tc.get("id", ""),
+                        "type": tc.get("type", "function"),
+                        "function": {
+                            "name": tc.get("function", {}).get("name", ""),
+                            "arguments": tc.get("function", {}).get("arguments", {})
+                        }
+                    }
+                    # Parse arguments if it's a string
+                    if isinstance(tc_copy["function"]["arguments"], str):
+                        try:
+                            tc_copy["function"]["arguments"] = json.loads(tc_copy["function"]["arguments"])
+                        except json.JSONDecodeError:
+                            tc_copy["function"]["arguments"] = {}
+                    tool_calls.append(tc_copy)
+                msg_dict["tool_calls"] = tool_calls
 
             # Include tool_call_id if present (for tool result messages)
             if msg.get("tool_call_id"):
