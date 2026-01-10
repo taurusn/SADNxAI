@@ -354,6 +354,7 @@ class OllamaAdapter:
 
                         # Check if done
                         if data.get("done", False):
+                            print(f"[Ollama] Received done=True, finalizing response")
                             tool_calls = None
 
                             # Debug: Log response structure
@@ -391,6 +392,17 @@ class OllamaAdapter:
                             return
                     except json.JSONDecodeError:
                         continue
+
+                # Fallback: Stream ended without done=True (shouldn't happen but handle gracefully)
+                if full_content or accumulated_tool_calls:
+                    print(f"[Ollama] WARNING: Stream ended without done=True, yielding accumulated content")
+                    tool_calls = accumulated_tool_calls if accumulated_tool_calls else self._extract_tool_calls(full_content)
+                    yield {
+                        "type": "done",
+                        "content": full_content,
+                        "tool_calls": tool_calls
+                    }
+                    return
 
         except httpx.TimeoutException:
             yield {
