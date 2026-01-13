@@ -35,7 +35,7 @@ SADNxAI (SADN x AI) is a Saudi-focused data anonymization platform for banking a
 | chat-service | 8000 | Main API, LLM orchestration, session management |
 | masking-service | 8001 | Data anonymization engine (suppress, generalize, pseudonymize, date-shift) |
 | validation-service | 8002 | Privacy metrics (k-anonymity, l-diversity, t-closeness) & PDF reports |
-| ollama | 11434 | Local SLM with GPU support (qwen2.5:14b) |
+| ollama | 11434 | Local SLM with GPU support (llama3.1:8b-instruct) |
 | redis | 6379 | Session storage |
 
 ## Key Files
@@ -106,7 +106,7 @@ docker compose logs -f chat-service
 docker compose logs -f ollama
 
 # Pull the model (if not already pulled)
-docker exec ollama ollama pull qwen2.5:14b
+docker exec ollama ollama pull llama3.1:8b-instruct
 
 # Check GPU usage inside Ollama
 docker exec ollama nvidia-smi
@@ -117,7 +117,7 @@ docker exec ollama nvidia-smi
 ```env
 # LLM Configuration
 LLM_PROVIDER=ollama              # 'ollama' or 'claude'
-OLLAMA_MODEL=qwen2.5:14b         # Model to use (14b recommended for tool calling)
+OLLAMA_MODEL=llama3.1:8b-instruct  # Model to use (best for tool calling)
 OLLAMA_URL=http://ollama:11434   # Ollama service URL
 OLLAMA_NATIVE_TOOLS=false        # Use Ollama's native function calling (experimental)
 LLM_MOCK_MODE=false              # true for testing without LLM
@@ -238,7 +238,7 @@ docker exec ollama nvidia-smi
 ### 2. Tool Calling Issues
 - **Cause**: Smaller models don't reliably follow tool call format
 - **Symptom**: LLM describes actions in text instead of JSON tool calls
-- **Solution**: Use qwen2.5:14b (better tool calling than 3b), retry logic in `ollama_adapter.py`
+- **Solution**: Use llama3.1:8b-instruct (best tool calling), retry logic in `ollama_adapter.py`
 
 ### 3. Context Truncation
 - **Cause**: Prompt exceeds context window
@@ -279,7 +279,7 @@ cd frontend && npm run dev
 
 # Run Ollama natively with GPU
 ollama serve
-ollama pull qwen2.5:14b
+ollama pull llama3.1:8b-instruct
 ```
 
 ### Testing
@@ -366,7 +366,7 @@ CHAT SERVICE (8000)
         │
         ├→ MASKING (8001): Suppressor, Generalizer, Pseudonymizer, DateShifter, TextScrubber
         ├→ VALIDATION (8002): k-anonymity, l-diversity, t-closeness, PDF Reports
-        └→ OLLAMA (11434): qwen2.5:14b GPU-accelerated
+        └→ OLLAMA (11434): llama3.1:8b-instruct GPU-accelerated
 ```
 
 ### Agentic Loop
@@ -494,7 +494,7 @@ Instead of calling `execute_pipeline` tool.
 
 **Root Cause**: The LLM (ministral-3:14b) hallucinated an error message in its text response instead of making a proper tool call. This is a model behavior issue where smaller models don't reliably follow tool call format.
 
-**Solution**: Use qwen2.5:14b or Claude for more reliable tool calling. The retry logic in `ollama_adapter.py` helps but cannot fully solve model-level issues.
+**Solution**: Use llama3.1:8b-instruct (best for tool calling) or Claude. See `docs/OLLAMA_MODEL_COMPARISON.md` for model recommendations.
 
 ### Issue: Race Condition - Handlers Set Up After Connect
 
@@ -545,6 +545,6 @@ disconnect(): void {
 | Issue | Description | Status |
 |-------|-------------|--------|
 | WebSocket error 1006 | Connection rejected if new code not deployed | Deploy required |
-| LLM tool call reliability | Smaller models don't reliably follow tool format | Use qwen2.5:14b+ |
+| LLM tool call reliability | Some models don't reliably follow tool format | Use llama3.1:8b-instruct |
 | No WebSocket auth | WebSocket connections not authenticated | TODO |
 | Connection indicator | Red dot shown when WS fails, may confuse users | Consider better UX |
