@@ -466,22 +466,16 @@ function setupWebSocketHandlers(
   });
 
   // Done event - finalize the response
+  // NOTE: Don't add message here - the 'session' event already brought messages from Redis
   wsManager.on('done', (msg: ServerMessage) => {
     const session = get().currentSession;
-    const streamingContent = get().streamingContent;
 
-    if (session && streamingContent.trim()) {
-      // Add assistant message from streaming content
-      const newMessages = [
-        ...session.messages,
-        { role: 'assistant' as const, content: streamingContent },
-      ];
-
+    // Just update status, don't add messages (already in session from 'session' event)
+    if (session) {
       set({
         currentSession: {
           ...session,
           status: msg.payload.status || session.status,
-          messages: newMessages,
         },
       });
     }
