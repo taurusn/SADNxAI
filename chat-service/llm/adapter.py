@@ -18,8 +18,9 @@ class LLMAdapter:
     Unified adapter for LLM communication.
 
     Supports:
+    - vLLM (local SLM with streaming tool calls) - RECOMMENDED
     - Claude API (Anthropic)
-    - Ollama (local SLM)
+    - Ollama (local SLM, legacy)
     - Mock mode (testing)
     """
 
@@ -34,25 +35,30 @@ class LLMAdapter:
         Initialize LLM adapter.
 
         Args:
-            provider: 'claude', 'ollama', or None (auto-detect)
+            provider: 'vllm', 'claude', 'ollama', or None (auto-detect)
             api_key: Anthropic API key (for Claude)
             model: Model to use
             mock_mode: If True, return mock responses
         """
         self.mock_mode = mock_mode or os.getenv("LLM_MOCK_MODE", "false").lower() == "true"
-        self.provider = provider or os.getenv("LLM_PROVIDER", "ollama")
+        self.provider = provider or os.getenv("LLM_PROVIDER", "vllm")  # Default to vLLM
         self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
         self.model = model
 
         # Initialize the appropriate client
         self.client = None
         self.ollama_adapter = None
+        self.vllm_adapter = None
 
         if not self.mock_mode:
             if self.provider == "claude" and self.api_key:
                 from anthropic import Anthropic
                 self.client = Anthropic(api_key=self.api_key)
                 print(f"LLM Provider: Claude API ({self.model})")
+            elif self.provider == "vllm":
+                from llm.vllm_adapter import get_vllm_adapter
+                self.vllm_adapter = get_vllm_adapter()
+                print(f"LLM Provider: vLLM ({self.vllm_adapter.model})")
             elif self.provider == "ollama":
                 from llm.ollama_adapter import get_ollama_adapter
                 self.ollama_adapter = get_ollama_adapter()
@@ -144,13 +150,16 @@ class LLMAdapter:
 
         Args:
             messages: List of messages
-            session_context: Optional session context for Ollama
+            session_context: Optional session context for vLLM/Ollama
 
         Returns:
             Response dict with content and tool_calls
         """
         if self.mock_mode:
             return self._mock_response(messages)
+
+        if self.vllm_adapter:
+            return await self.vllm_adapter.chat(messages, session_context)
 
         if self.ollama_adapter:
             return await self.ollama_adapter.chat(messages, session_context)
@@ -223,12 +232,19 @@ class LLMAdapter:
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """
         Stream chat response token-by-token.
-        Filters out tool_call blocks to show only natural language.
+        vLLM: Native streaming tool calls (no filtering needed)
+        Ollama: Filters out tool_call blocks to show only natural language.
         """
         if self.mock_mode:
             # Mock: just yield the response as done
             result = self._mock_response(messages)
             yield {"type": "done", "content": result.get("content", ""), "tool_calls": result.get("tool_calls")}
+            return
+
+        # vLLM: Native streaming tool calls - just pass through!
+        if self.vllm_adapter:
+            async for chunk in self.vllm_adapter.chat_stream(messages, session_context):
+                yield chunk
             return
 
         if self.ollama_adapter:
@@ -354,6 +370,14 @@ class LLMAdapter:
         if self.mock_mode:
             return {"status": "healthy", "provider": "mock"}
 
+        if self.vllm_adapter:
+            is_healthy = await self.vllm_adapter.check_health()
+            return {
+                "status": "healthy" if is_healthy else "unhealthy",
+                "provider": "vllm",
+                "model": self.vllm_adapter.model
+            }
+
         if self.ollama_adapter:
             is_healthy = await self.ollama_adapter.check_health()
             return {
@@ -368,7 +392,11 @@ class LLMAdapter:
         return {"status": "unhealthy", "provider": "none"}
 
     async def ensure_model(self) -> bool:
-        """Ensure the model is available (pulls if needed for Ollama)."""
+        """Ensure the model is available (vLLM loads at startup, Ollama pulls if needed)."""
+        if self.vllm_adapter:
+            # vLLM loads the model at container startup
+            return await self.vllm_adapter.check_health()
+
         if self.ollama_adapter:
             is_available = await self.ollama_adapter.check_health()
             if not is_available:

@@ -21,13 +21,15 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - LLM_PROVIDER=${LLM_PROVIDER:-ollama}
+      # vLLM Configuration (default)
+      - LLM_PROVIDER=${LLM_PROVIDER:-vllm}
+      - VLLM_URL=http://vllm:8000
+      - VLLM_API_KEY=${VLLM_API_KEY:-token-sadnxai}
+      - VLLM_MODEL=${VLLM_MODEL:-meta-llama/Llama-3.1-8B-Instruct}
+      # Fallback options
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      - OLLAMA_URL=http://ollama:11434
-      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.1:8b}
-      - OLLAMA_NATIVE_TOOLS=${OLLAMA_NATIVE_TOOLS:-true}
-      - OLLAMA_NUM_CTX=${OLLAMA_NUM_CTX:-32000}
       - TOON_ENABLED=${TOON_ENABLED:-false}
+      # Service URLs
       - REDIS_URL=redis://redis:6379/0
       - DATABASE_URL=postgresql://sadnxai:${POSTGRES_PASSWORD:-sadnxai_secure_pass}@postgres:5432/sadnxai
       - MASKING_SERVICE_URL=http://masking-service:8001
@@ -45,8 +47,8 @@ services:
         condition: service_started
       validation-service:
         condition: service_started
-      ollama:
-        condition: service_started
+      vllm:
+        condition: service_healthy
 
   masking-service:
     build:
@@ -104,15 +106,22 @@ services:
       timeout: 5s
       retries: 5
 
-  ollama:
-    image: ollama/ollama:latest
+  vllm:
+    image: vllm/vllm-openai:latest
     ports:
-      - "11434:11434"
+      - "8080:8000"
     volumes:
-      - ollama-data:/root/.ollama
+      - huggingface-cache:/root/.cache/huggingface
     environment:
-      - OLLAMA_KEEP_ALIVE=10m
-      - OLLAMA_NUM_PARALLEL=2
+      - HF_TOKEN=${HF_TOKEN:-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}
+      - VLLM_API_KEY=${VLLM_API_KEY:-token-sadnxai}
+    command: >
+      --model meta-llama/Llama-3.1-8B-Instruct
+      --enable-auto-tool-choice
+      --tool-call-parser llama3_json
+      --max-model-len 32000
+      --gpu-memory-utilization 0.9
+      --dtype auto
     deploy:
       resources:
         reservations:
@@ -121,14 +130,14 @@ services:
               count: all
               capabilities: [gpu]
     healthcheck:
-      test: ["CMD", "ollama", "list"]
-      interval: 10s
-      timeout: 30s
-      retries: 5
-      start_period: 60s
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 300s
 
 volumes:
   storage:
   redis-data:
   postgres-data:
-  ollama-data:
+  huggingface-cache:

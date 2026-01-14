@@ -9,9 +9,9 @@ SADNxAI (SADN x AI) is a Saudi-focused data anonymization platform for banking a
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                           Docker Compose Network                         │
 ├─────────────┬──────────────┬──────────────┬──────────────┬─────────────┤
-│  Frontend   │ Chat Service │   Masking    │  Validation  │   Ollama    │
+│  Frontend   │ Chat Service │   Masking    │  Validation  │    vLLM     │
 │  (Next.js)  │  (FastAPI)   │   Service    │   Service    │   (GPU)     │
-│   :3000     │    :8000     │    :8001     │    :8002     │   :11434    │
+│   :3000     │    :8000     │    :8001     │    :8002     │   :8080     │
 └──────┬──────┴──────┬───────┴──────┬───────┴──────┬───────┴──────┬──────┘
        │             │              │              │              │
        │             ▼              │              │              │
@@ -35,7 +35,7 @@ SADNxAI (SADN x AI) is a Saudi-focused data anonymization platform for banking a
 | chat-service | 8000 | Main API, LLM orchestration, session management |
 | masking-service | 8001 | Data anonymization engine (suppress, generalize, pseudonymize, date-shift) |
 | validation-service | 8002 | Privacy metrics (k-anonymity, l-diversity, t-closeness) & PDF reports |
-| ollama | 11434 | Local SLM with GPU support (llama3.1:8b) |
+| vllm | 8080 | Local SLM with GPU support, streaming tool calls (Llama 3.1 8B) |
 | redis | 6379 | Session storage |
 
 ## Key Files
@@ -49,8 +49,9 @@ SADNxAI (SADN x AI) is a Saudi-focused data anonymization platform for banking a
 | `core/conversation.py` | Conversation state machine, approval detection |
 | `core/session.py` | Session CRUD with Redis |
 | `core/ws_manager.py` | WebSocket connection manager per session |
-| `llm/adapter.py` | LLM provider abstraction (Ollama/Claude/Mock) |
-| `llm/ollama_adapter.py` | Ollama integration with tool calling, retry logic |
+| `llm/adapter.py` | LLM provider abstraction (vLLM/Claude/Ollama/Mock) |
+| `llm/vllm_adapter.py` | vLLM integration with OpenAI-compatible API, native streaming tool calls |
+| `llm/ollama_adapter.py` | Ollama integration with tool calling (legacy) |
 | `llm/tools.py` | Tool executor for classify_columns, execute_pipeline, update_thresholds |
 | `pipeline/executor.py` | Orchestrates masking → validation → report flow |
 
@@ -103,23 +104,32 @@ docker compose up --build -d chat-service
 
 # Check logs
 docker compose logs -f chat-service
-docker compose logs -f ollama
+docker compose logs -f vllm
 
-# Pull the model (if not already pulled)
-docker exec ollama ollama pull llama3.1:8b
+# Check vLLM health (model loading takes ~2-5 minutes)
+curl http://localhost:8080/health
 
-# Check GPU usage inside Ollama
-docker exec ollama nvidia-smi
+# Check GPU usage inside vLLM
+docker exec sadnxai-vllm-1 nvidia-smi
+
+# Test vLLM API
+curl -X POST http://localhost:8080/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer token-sadnxai" \
+  -d '{"model": "meta-llama/Llama-3.1-8B-Instruct", "messages": [{"role": "user", "content": "Hello"}]}'
 ```
 
 ## Environment Variables
 
 ```env
-# LLM Configuration
-LLM_PROVIDER=ollama              # 'ollama' or 'claude'
-OLLAMA_MODEL=llama3.1:8b  # Model to use (best for tool calling)
-OLLAMA_URL=http://ollama:11434   # Ollama service URL
-OLLAMA_NATIVE_TOOLS=false        # Use Ollama's native function calling (experimental)
+# LLM Configuration (vLLM - default, recommended)
+LLM_PROVIDER=vllm                # 'vllm', 'ollama', or 'claude'
+VLLM_URL=http://vllm:8000        # vLLM service URL
+VLLM_API_KEY=token-sadnxai       # API key for vLLM
+VLLM_MODEL=meta-llama/Llama-3.1-8B-Instruct  # Model to use
+HF_TOKEN=                        # HuggingFace token for gated models
+
+# Alternative providers
 LLM_MOCK_MODE=false              # true for testing without LLM
 ANTHROPIC_API_KEY=               # Only if using Claude
 
@@ -146,11 +156,22 @@ The system detects approval with phrases: "approve", "yes", "proceed", "go ahead
 
 ## Tool Call Format
 
-The SLM outputs tool calls in this format:
-```
-```tool_call
-{"tool": "classify_columns", "arguments": {...}}
-```
+vLLM uses the standard OpenAI function calling format with streaming support:
+```json
+{
+  "choices": [{
+    "message": {
+      "tool_calls": [{
+        "id": "call_abc123",
+        "type": "function",
+        "function": {
+          "name": "classify_columns",
+          "arguments": "{...}"
+        }
+      }]
+    }
+  }]
+}
 ```
 
 ### Available Tools
@@ -210,9 +231,16 @@ The SLM outputs tool calls in this format:
 
 ## GPU Support
 
-The docker-compose.yml is configured for NVIDIA GPU acceleration:
+The docker-compose.yml is configured for NVIDIA GPU acceleration with vLLM:
 ```yaml
-ollama:
+vllm:
+  image: vllm/vllm-openai:latest
+  command: >
+    --model meta-llama/Llama-3.1-8B-Instruct
+    --enable-auto-tool-choice
+    --tool-call-parser llama3_json
+    --max-model-len 32000
+    --gpu-memory-utilization 0.9
   deploy:
     resources:
       reservations:
@@ -224,25 +252,30 @@ ollama:
 
 To verify GPU is working:
 ```bash
-docker exec ollama nvidia-smi
-# Look for "GPU memory" being used when model is loaded
+docker exec sadnxai-vllm-1 nvidia-smi
+# Look for "GPU memory" being used (~8-10GB for Llama 3.1 8B)
 ```
+
+### vLLM Benefits over Ollama
+- **Streaming tool calls**: Native support (Ollama doesn't support this)
+- **2-4x better throughput**: Production-grade inference engine
+- **OpenAI-compatible API**: Simpler integration, no regex parsing needed
 
 ## Known Issues & Solutions
 
-### 1. Slow LLM Responses
-- **Cause**: Model not loaded or running on CPU
-- **Solution**: Check GPU access with `docker exec ollama nvidia-smi`
-- **Optimizations in code**: `keep_alive: "10m"`, persistent HTTP client
+### 1. vLLM Slow to Start
+- **Cause**: Model download on first run (~15-20 mins for 8B model)
+- **Solution**: Wait for healthcheck to pass, check logs with `docker compose logs -f vllm`
+- **Subsequent starts**: ~2-5 minutes (model cached in huggingface-cache volume)
 
-### 2. Tool Calling Issues
-- **Cause**: Smaller models don't reliably follow tool call format
-- **Symptom**: LLM describes actions in text instead of JSON tool calls
-- **Solution**: Use llama3.1:8b (best tool calling), retry logic in `ollama_adapter.py`
+### 2. Tool Calling Works Reliably
+- **vLLM Advantage**: Native streaming tool calls with `--enable-auto-tool-choice`
+- **No regex parsing needed**: Tool calls come in OpenAI format
+- **Llama 3.1 8B**: Best model for tool calling
 
-### 3. Context Truncation
-- **Cause**: Prompt exceeds context window
-- **Solution**: `num_ctx: 24000` in ollama options, compact system prompt
+### 3. Context Window
+- **vLLM Config**: `--max-model-len 32000` (32K context)
+- **GPU Memory**: Uses ~8-10GB VRAM for Llama 3.1 8B
 
 ### 4. Validation Failures
 - **Cause**: Insufficient generalization for k-anonymity
@@ -277,9 +310,13 @@ cd validation-service && uvicorn main:app --reload --port 8002
 # Frontend
 cd frontend && npm run dev
 
-# Run Ollama natively with GPU
-ollama serve
-ollama pull llama3.1:8b
+# Run vLLM natively with GPU
+pip install vllm
+vllm serve meta-llama/Llama-3.1-8B-Instruct \
+  --enable-auto-tool-choice \
+  --tool-call-parser llama3_json \
+  --max-model-len 32000 \
+  --port 8000
 ```
 
 ### Testing
@@ -360,13 +397,14 @@ python test_all.py
 ```
 CHAT SERVICE (8000)
   routes.py → Session CRUD, Upload, Chat
-  llm/adapter.py → Ollama/Claude/Mock
+  llm/adapter.py → vLLM/Claude/Ollama/Mock
+  llm/vllm_adapter.py → OpenAI-compatible streaming with native tool calls
   llm/tools.py → classify_columns, execute_pipeline
   pipeline/executor.py → Masking → Validation → Report
         │
         ├→ MASKING (8001): Suppressor, Generalizer, Pseudonymizer, DateShifter, TextScrubber
         ├→ VALIDATION (8002): k-anonymity, l-diversity, t-closeness, PDF Reports
-        └→ OLLAMA (11434): llama3.1:8b GPU-accelerated
+        └→ vLLM (8080): Llama 3.1 8B GPU-accelerated with streaming tool calls
 ```
 
 ### Agentic Loop
