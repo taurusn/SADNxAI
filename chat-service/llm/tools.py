@@ -135,6 +135,17 @@ class ToolExecutor:
                 merged_dict = {**existing_dict, **new_dict}  # New values override
                 args[dict_field] = merged_dict
 
+        # Deduplicate: Remove columns from lower-priority categories if they appear in higher ones
+        # Priority order: date_columns > sensitive_attributes > direct_identifiers > linkage_identifiers > quasi_identifiers
+        seen_cols = set()
+        priority_order = ["date_columns", "sensitive_attributes", "direct_identifiers", "linkage_identifiers", "quasi_identifiers"]
+        for category in priority_order:
+            cols = args.get(category, [])
+            deduped = [c for c in cols if c not in seen_cols]
+            seen_cols.update(deduped)
+            args[category] = deduped
+        print(f"[Column Validation] After deduplication: direct={args.get('direct_identifiers')}, quasi={args.get('quasi_identifiers')}, linkage={args.get('linkage_identifiers')}, date={args.get('date_columns')}, sensitive={args.get('sensitive_attributes')}")
+
         # Validate that all classified columns exist in the actual file
         actual_columns = set(self.session.columns or [])
         print(f"[Column Validation] Session columns: {self.session.columns}")

@@ -51,7 +51,7 @@ TOOLS = [
                     "linkage_identifiers": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "Internal record IDs used for linking (mrn, patient_id, record_id, employee_id). These will be PSEUDONYMIZED with consistent hashing."
+                        "description": "INTERNAL SYSTEM IDs for cross-record linking (customer_id, account_id, merchant_id, employee_id). NOT National_ID (that's direct). NOT Transaction_Amount or Fraud_Flag (those are sensitive). Only database PKs/FKs go here."
                     },
                     "date_columns": {
                         "type": "array",
@@ -61,7 +61,7 @@ TOOLS = [
                     "sensitive_attributes": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "Sensitive data that must be preserved for analysis (diagnosis, treatment, salary, grade). These will be KEPT unchanged."
+                        "description": "Data values needed for analysis - KEEP UNCHANGED. For fraud detection: Transaction_Amount, Fraud_Flag, Risk_Score. For ML: features like amount, category, status. These are the ANALYSIS TARGET - never hash/mask them!"
                     },
                     "recommended_techniques": {
                         "type": "object",
@@ -234,13 +234,13 @@ You are an expert consultant who:
 
 ## COLUMN CLASSIFICATION
 
-| Category | Technique | Examples | Regulation |
-|----------|-----------|----------|------------|
-| Direct ID | SUPPRESS | national_id, iqama, name, phone, email, iban, card_number | PDPL Art.11,15 |
-| Quasi-ID | GENERALIZE | age, city, gender, occupation, income_bracket | PDPL Art.11,17 |
-| Linkage ID | PSEUDONYMIZE | customer_id, account_id, transaction_id, merchant_id | PDPL Art.19, SAMA 2.6.3 |
-| Date | DATE_SHIFT | transaction_date, opening_date, dob | PDPL Art.11 |
-| Sensitive | KEEP | amount, credit_score, fraud_flag, merchant_category | PDPL Art.5,24 |
+| Category | Technique | What it is | Examples | NOT this |
+|----------|-----------|-----------|----------|----------|
+| Direct ID | SUPPRESS | Personal documents, contact info | national_id, iqama, phone, email, iban | NOT customer_id |
+| Quasi-ID | GENERALIZE | Demographics that combine to identify | age, city, gender, occupation | NOT amounts |
+| Linkage ID | PSEUDONYMIZE | SYSTEM IDs (PKs/FKs) for cross-linking | customer_id, account_id, merchant_id | NOT national_id, NOT amounts |
+| Date | DATE_SHIFT | Date/time columns | transaction_date, dob, hire_date | NOT numeric IDs |
+| Sensitive | KEEP | ANALYSIS TARGETS - values needed for ML/analytics | Transaction_Amount, Fraud_Flag, credit_score, status | Never hash these! |
 
 ## SAUDI PATTERNS (Auto-detect)
 - **National ID**: 10 digits starting with 1 (Saudi citizen)
@@ -257,6 +257,21 @@ When analyzing data, consider the user's likely use case:
 **ML Training** → Suppress all identifiers, generalize demographics, keep behavioral features
 **Regulatory Reporting** → Pseudonymize for audit trails, keep risk/compliance fields
 **Research/Analytics** → High generalization, suppress linkage IDs, keep aggregate patterns
+
+## CRITICAL: FRAUD DETECTION USE CASE
+If you see columns like "Fraud_Flag", "Fraud", "Is_Fraud", "Transaction_Amount", "Amount":
+- **Transaction_Amount** → sensitive_attribute (KEEP) - needed to detect fraud patterns!
+- **Fraud_Flag** → sensitive_attribute (KEEP) - this is the ML label, MUST be preserved!
+- **National_ID** → direct_identifier (SUPPRESS) - personal document, remove it!
+- **Customer_ID/Account_ID** → linkage_identifier (PSEUDONYMIZE) - system IDs for linking
+
+### WRONG vs RIGHT Classification (Fraud Detection)
+| Column | WRONG ❌ | RIGHT ✓ | Why |
+|--------|---------|---------|-----|
+| Transaction_Amount | linkage_identifier | sensitive_attribute | It's the analysis target, not an ID! |
+| Fraud_Flag | linkage_identifier | sensitive_attribute | ML label - hashing destroys utility! |
+| National_ID | linkage_identifier | direct_identifier | Personal document - suppress, not hash! |
+| Customer_ID | direct_identifier | linkage_identifier | System ID - pseudonymize for cross-linking |
 
 ## PRIVACY METRICS (Justify recommendations)
 - **k-anonymity ≥ 5**: Each record indistinguishable from 4+ others (PDPL Art.15)
