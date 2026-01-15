@@ -230,7 +230,12 @@ async def _handle_chat_message(
                     args = {}
             except (json.JSONDecodeError, TypeError, KeyError) as e:
                 print(f"[WS Agentic Loop] Failed to parse tool arguments: {e}")
+                print(f"[WS Agentic Loop] Raw args (first 500 chars): {str(args_raw)[:500]}")
+                print(f"[WS Agentic Loop] Raw args (around error): {str(args_raw)[2020:2060] if len(str(args_raw)) > 2060 else 'N/A'}")
                 await _send_event(session_id, websocket, "error", {"message": f"Invalid tool arguments: {e}"}, msg_id)
+                # Remove this malformed tool call from messages to prevent vLLM 400 error
+                if messages and messages[-1].get("tool_calls"):
+                    messages[-1]["tool_calls"] = [t for t in messages[-1]["tool_calls"] if t["id"] != tc["id"]]
                 continue
 
             # Send tool_start event
@@ -274,6 +279,31 @@ async def _handle_chat_message(
                 session.status = SessionStatus.PROPOSED
                 session_context = _build_session_context(session)
                 print(f"[WS Agentic Loop] Classification updated, status -> PROPOSED")
+                # Stop the loop - classification is complete
+                should_break = True
+                print(f"[WS Agentic Loop] Breaking loop after successful classification")
+
+                # Build a nice classification summary message
+                classification = session.classification
+                summary_lines = ["**Column Classification Complete**\n"]
+                if classification.direct_identifiers:
+                    summary_lines.append(f"**Direct Identifiers (SUPPRESS):** {', '.join(classification.direct_identifiers)}")
+                if classification.quasi_identifiers:
+                    summary_lines.append(f"**Quasi-Identifiers (GENERALIZE):** {', '.join(classification.quasi_identifiers)}")
+                if classification.linkage_identifiers:
+                    summary_lines.append(f"**Linkage Identifiers (PSEUDONYMIZE):** {', '.join(classification.linkage_identifiers)}")
+                if classification.date_columns:
+                    summary_lines.append(f"**Date Columns (DATE_SHIFT):** {', '.join(classification.date_columns)}")
+                if classification.sensitive_attributes:
+                    summary_lines.append(f"**Sensitive Attributes (KEEP):** {', '.join(classification.sensitive_attributes)}")
+                summary_lines.append("\n**Do you approve this classification?** (say 'yes' or 'approve' to proceed)")
+
+                summary_msg = "\n".join(summary_lines)
+                await _send_event(session_id, websocket, "message", {"content": summary_msg}, msg_id)
+
+                # Also add to session messages
+                final_assistant_msg = Message(role=MessageRole.ASSISTANT, content=summary_msg)
+                session.messages.append(final_assistant_msg)
 
         if should_break:
             break

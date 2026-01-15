@@ -9,35 +9,22 @@ from shared.openai_schema import SYSTEM_PROMPT
 # State-specific instructions to append to base prompt
 ANALYZING_INSTRUCTION = """
 
-## ⚠️ CRITICAL: YOU MUST CALL classify_columns NOW ⚠️
+## IMPORTANT: CALL classify_columns TOOL NOW
 
-A file has been uploaded. Your ONLY job right now is to call the `classify_columns` tool.
+A file has been uploaded. You MUST call the `classify_columns` tool immediately.
 
-**DO NOT** just describe the classification in text.
-**DO NOT** explain what you would do.
-**YOU MUST** call the `classify_columns` tool with ALL columns from the file.
+- Analyze the columns shown in CURRENT FILE section below
+- Call the `classify_columns` tool with ALL columns classified appropriately
+- Do NOT just describe what you would do - actually call the tool
 
-If you respond with text only and no tool call, the system will fail.
-
-The tool call format is:
-```tool_call
-{"tool": "classify_columns", "arguments": {...}}
-```
-
-Or if using native tools, just call the function directly.
-
-NOW CALL THE TOOL with ALL columns from CURRENT FILE section below.
+The tool will be called automatically when you decide to use it.
 """
 
 APPROVED_INSTRUCTION = """
 
-## ⚠️ USER APPROVED - CALL execute_pipeline NOW ⚠️
+## USER APPROVED - CALL execute_pipeline TOOL NOW
 
-The user has approved the classification. Your ONLY job is to call `execute_pipeline`.
-
-```tool_call
-{"tool": "execute_pipeline", "arguments": {"confirmed": true}}
-```
+The user has approved the classification. Call the `execute_pipeline` tool with `confirmed: true`.
 """
 
 

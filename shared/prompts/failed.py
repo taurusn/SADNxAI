@@ -27,23 +27,10 @@ Validation did not meet the required privacy thresholds.
 3. **Offer** to make adjustments
 
 ## Threshold Adjustment
-If user agrees to adjust thresholds:
-```tool_call
-{"tool": "update_thresholds", "arguments": {
-  "k_anonymity_minimum": 3,
-  "k_anonymity_target": 5,
-  "l_diversity_minimum": 1,
-  "l_diversity_target": 2,
-  "t_closeness_minimum": 0.3,
-  "t_closeness_target": 0.25
-}}
-```
+If user agrees to adjust thresholds, call `update_thresholds` tool with new values.
 
 ## Re-running Pipeline
-After adjustments, user can approve to re-run:
-```tool_call
-{"tool": "execute_pipeline", "arguments": {"confirmed": true}}
-```
+After adjustments, when user approves, call `execute_pipeline` tool with confirmed=true.
 
 ## Example Response
 "The validation didn't pass due to low k-anonymity (achieved: 3, required: 5).

@@ -26,9 +26,7 @@ After changes, call `classify_columns` again with updated values.
 """ + APPROVAL_PHRASES + """
 
 ## When User Approves
-```tool_call
-{"tool": "execute_pipeline", "arguments": {"confirmed": true}}
-```
+Call `execute_pipeline` tool with confirmed=true.
 
 Keep responses focused on the classification and user's questions.
 Do not repeat the full classification table unless asked.

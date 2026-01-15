@@ -4,6 +4,7 @@ Handles execution of LLM tool calls
 """
 
 import os
+import json
 import asyncio
 from typing import Dict, Any, Callable, Optional
 
@@ -67,7 +68,10 @@ class ToolExecutor:
                 return await result
             return result
         except Exception as e:
-            return {"error": str(e)}
+            import traceback
+            print(f"[ToolExecutor] Exception in {tool_name}: {e}")
+            traceback.print_exc()
+            return {"success": False, "error": str(e)}
 
     async def _handle_classify_columns(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -76,6 +80,28 @@ class ToolExecutor:
         Records the AI's classification decision and saves to PostgreSQL.
         Supports incremental merge - LLM can send only missing columns on retry.
         """
+        # Debug: Log raw args from LLM
+        print(f"[Column Validation] RAW args from LLM:")
+        print(f"  direct_identifiers: {args.get('direct_identifiers', [])} (type: {type(args.get('direct_identifiers', [])).__name__})")
+        print(f"  quasi_identifiers: {args.get('quasi_identifiers', [])} (type: {type(args.get('quasi_identifiers', [])).__name__})")
+        print(f"  linkage_identifiers: {args.get('linkage_identifiers', [])} (type: {type(args.get('linkage_identifiers', [])).__name__})")
+        print(f"  date_columns: {args.get('date_columns', [])} (type: {type(args.get('date_columns', [])).__name__})")
+        print(f"  sensitive_attributes: {args.get('sensitive_attributes', [])} (type: {type(args.get('sensitive_attributes', [])).__name__})")
+
+        # Fix: Parse any string values that are JSON arrays
+        for category in ["direct_identifiers", "quasi_identifiers", "linkage_identifiers", "date_columns", "sensitive_attributes"]:
+            val = args.get(category, [])
+            if isinstance(val, str):
+                try:
+                    parsed = json.loads(val)
+                    if isinstance(parsed, list):
+                        args[category] = parsed
+                        print(f"[Column Validation] Parsed {category} from JSON string")
+                except json.JSONDecodeError:
+                    args[category] = []
+            elif val is None:
+                args[category] = []
+
         # Merge with existing partial classification if present
         existing = self.session.classification
         if existing:
@@ -98,6 +124,14 @@ class ToolExecutor:
                 if dict_field == "recommended_techniques" and existing_dict:
                     existing_dict = {k: v.value if hasattr(v, 'value') else v for k, v in existing_dict.items()}
                 new_dict = args.get(dict_field, {})
+                # Handle case where new_dict is a string (LLM sends reasoning as string)
+                if isinstance(new_dict, str):
+                    if dict_field == "reasoning":
+                        new_dict = {"general": new_dict}
+                    else:
+                        new_dict = {}
+                elif not isinstance(new_dict, dict):
+                    new_dict = {}
                 merged_dict = {**existing_dict, **new_dict}  # New values override
                 args[dict_field] = merged_dict
 
@@ -134,10 +168,9 @@ class ToolExecutor:
                 unclassified_list = list(unclassified)
                 return {
                     "success": False,
-                    "error": f"Columns NOT classified: {unclassified_list}. "
-                             f"Look at the Sample Data values for these columns and classify them. "
-                             f"If unsure, add them to 'sensitive_attributes' (KEEP). "
-                             f"Send ONLY these {len(unclassified_list)} columns - they will merge with your previous classification."
+                    "error": f"MISSING COLUMNS: {unclassified_list}. "
+                             f"You MUST add these to sensitive_attributes array. "
+                             f"Call classify_columns again with sensitive_attributes: {list(args.get('sensitive_attributes', [])) + unclassified_list}"
                 }
         else:
             print("[Column Validation] WARNING: No columns in session, skipping validation")
@@ -150,33 +183,43 @@ class ToolExecutor:
             date_level=gen_config_args.get("date_level", 1)
         )
 
-        # Convert string techniques to enum
+        # Convert string techniques to enum (handle string or dict)
         recommended_techniques = {}
-        for col, tech in args.get("recommended_techniques", {}).items():
-            try:
-                recommended_techniques[col] = MaskingTechnique(tech)
-            except ValueError:
-                recommended_techniques[col] = MaskingTechnique.KEEP
+        raw_techniques = args.get("recommended_techniques", {})
+        if isinstance(raw_techniques, dict):
+            for col, tech in raw_techniques.items():
+                try:
+                    recommended_techniques[col] = MaskingTechnique(tech)
+                except ValueError:
+                    recommended_techniques[col] = MaskingTechnique.KEEP
+        # If it's a string, ignore it (LLM sent malformed data)
 
-        # Convert regulation_refs to RegulationRef objects
+        # Convert regulation_refs to RegulationRef objects (handle string or dict)
         raw_regulation_refs = args.get("regulation_refs", {})
         regulation_refs = {}
-        for col, refs in raw_regulation_refs.items():
-            regulation_refs[col] = [
-                RegulationRef(
-                    regulation_id=ref.get("regulation_id", ""),
-                    relevance=ref.get("relevance", "")
-                )
-                for ref in refs if isinstance(ref, dict)
-            ]
+        if isinstance(raw_regulation_refs, dict):
+            for col, refs in raw_regulation_refs.items():
+                regulation_refs[col] = [
+                    RegulationRef(
+                        regulation_id=ref.get("regulation_id", ""),
+                        relevance=ref.get("relevance", "")
+                    )
+                    for ref in refs if isinstance(ref, dict)
+                ]
 
-        # Normalize reasoning - handle both string and array formats
+        # Normalize reasoning - handle both string and dict formats
         reasoning = args.get("reasoning", {})
-        for col, val in reasoning.items():
-            if isinstance(val, list):
-                reasoning[col] = " ".join(str(v) for v in val)
-            elif not isinstance(val, str):
-                reasoning[col] = str(val)
+        if isinstance(reasoning, str):
+            # LLM sent a single string - convert to dict with "general" key
+            reasoning = {"general": reasoning}
+        elif isinstance(reasoning, dict):
+            for col, val in reasoning.items():
+                if isinstance(val, list):
+                    reasoning[col] = " ".join(str(v) for v in val)
+                elif not isinstance(val, str):
+                    reasoning[col] = str(val)
+        else:
+            reasoning = {}
         args["reasoning"] = reasoning
 
         # Build classification
@@ -228,10 +271,17 @@ class ToolExecutor:
                     "regulation_refs": raw_regulation_refs.get(col, [])
                 })
 
-        # Save to PostgreSQL
+        # Save to PostgreSQL (optional - don't fail classification if DB unavailable)
         db_save_result = None
         if db_classifications:
-            db_save_result = await self._save_classifications_to_db(db_classifications)
+            try:
+                db_save_result = await self._save_classifications_to_db(db_classifications)
+            except ImportError as e:
+                print(f"[Column Validation] DB save skipped - module not available: {e}")
+                db_save_result = {"success": False, "error": f"DB module not available: {e}"}
+            except Exception as e:
+                print(f"[Column Validation] DB save failed: {e}")
+                db_save_result = {"success": False, "error": str(e)}
 
         # Count classified columns
         total_classified = (
@@ -244,7 +294,8 @@ class ToolExecutor:
 
         result = {
             "success": True,
-            "message": f"Classification recorded for {total_classified} columns",
+            "message": f"Classification recorded for {total_classified} columns. "
+                       f"DO NOT call any more tools. Present this classification to the user in a table and ask if they approve.",
             "classification": {
                 "direct_identifiers": classification.direct_identifiers,
                 "quasi_identifiers": classification.quasi_identifiers,
@@ -273,13 +324,22 @@ class ToolExecutor:
             date_level=gen_config_args.get("date_level", 1)
         )
 
-        # Convert string techniques to enum
+        # Convert string techniques to enum (handle string or dict)
         recommended_techniques = {}
-        for col, tech in args.get("recommended_techniques", {}).items():
-            try:
-                recommended_techniques[col] = MaskingTechnique(tech)
-            except ValueError:
-                recommended_techniques[col] = MaskingTechnique.KEEP
+        raw_techniques = args.get("recommended_techniques", {})
+        if isinstance(raw_techniques, dict):
+            for col, tech in raw_techniques.items():
+                try:
+                    recommended_techniques[col] = MaskingTechnique(tech)
+                except ValueError:
+                    recommended_techniques[col] = MaskingTechnique.KEEP
+
+        # Normalize reasoning - handle string format
+        reasoning = args.get("reasoning", {})
+        if isinstance(reasoning, str):
+            reasoning = {"general": reasoning}
+        elif not isinstance(reasoning, dict):
+            reasoning = {}
 
         self.session.classification = Classification(
             direct_identifiers=args.get("direct_identifiers", []),
@@ -288,7 +348,7 @@ class ToolExecutor:
             date_columns=args.get("date_columns", []),
             sensitive_attributes=args.get("sensitive_attributes", []),
             recommended_techniques=recommended_techniques,
-            reasoning=args.get("reasoning", {}),
+            reasoning=reasoning,
             regulation_refs={},  # Skip complex conversion for partial save
             generalization_config=gen_config
         )
@@ -395,6 +455,22 @@ class ToolExecutor:
 
         Updates privacy thresholds based on user requirements.
         """
+        # Convert string values to numbers (LLM often sends "5" instead of 5)
+        int_keys = ["k_anonymity_minimum", "k_anonymity_target", "l_diversity_minimum", "l_diversity_target"]
+        float_keys = ["t_closeness_minimum", "t_closeness_target", "risk_score_minimum", "risk_score_target"]
+        for key in int_keys:
+            if key in args and isinstance(args[key], str):
+                try:
+                    args[key] = int(args[key])
+                except ValueError:
+                    pass
+        for key in float_keys:
+            if key in args and isinstance(args[key], str):
+                try:
+                    args[key] = float(args[key])
+                except ValueError:
+                    pass
+
         # Validate threshold ranges
         errors = []
         for key in ["k_anonymity_minimum", "k_anonymity_target"]:

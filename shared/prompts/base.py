@@ -13,13 +13,10 @@ You help banks anonymize data for PDPL (Personal Data Protection Law) compliance
 """
 
 TOOL_FORMAT = """
-## TOOL CALL FORMAT (REQUIRED)
-You MUST output tool calls in this exact format:
-```tool_call
-{"tool": "tool_name", "arguments": {...}}
-```
-
-Text descriptions WITHOUT tool calls will NOT work. The system ONLY processes tool calls.
+## IMPORTANT
+- You have access to tools via function calling
+- Call tools directly - do NOT output JSON in text
+- Text descriptions alone will not execute actions
 """
 
 TECHNIQUES_SUMMARY = """

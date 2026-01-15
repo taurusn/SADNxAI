@@ -149,7 +149,12 @@ async def _run_agentic_loop_streaming(
                     args = {}
             except (json.JSONDecodeError, TypeError, KeyError) as e:
                 print(f"[Agentic Loop] Failed to parse tool arguments: {e}")
+                print(f"[Agentic Loop] Raw args (first 500 chars): {str(args_raw)[:500]}")
+                print(f"[Agentic Loop] Raw args (around error): {str(args_raw)[2020:2060] if len(str(args_raw)) > 2060 else 'N/A'}")
                 yield _sse_event("error", {"message": f"Invalid tool arguments for {tool_name}: {e}"})
+                # Remove malformed tool call from messages to prevent vLLM 400 error
+                if messages and messages[-1].get("tool_calls"):
+                    messages[-1]["tool_calls"] = [t for t in messages[-1]["tool_calls"] if t["id"] != tc["id"]]
                 continue
 
             # Yield tool_call event
@@ -185,13 +190,39 @@ async def _run_agentic_loop_streaming(
             })
 
             # Track classification updates
+            print(f"[Agentic Loop] Tool '{tool_name}' result success={result.get('success')}, keys={list(result.keys())}")
             if tool_name == "classify_columns" and result.get("success"):
                 session.status = SessionStatus.PROPOSED
                 session_context = _build_session_context(session)
                 print(f"[Agentic Loop] Classification updated, status -> PROPOSED")
+                # Stop the loop - classification is complete
+                should_break = True
+                print(f"[Agentic Loop] Breaking loop after successful classification")
+
+                # Build a nice classification summary message
+                classification = session.classification
+                summary_lines = ["**Column Classification Complete**\n"]
+                if classification.direct_identifiers:
+                    summary_lines.append(f"**Direct Identifiers (SUPPRESS):** {', '.join(classification.direct_identifiers)}")
+                if classification.quasi_identifiers:
+                    summary_lines.append(f"**Quasi-Identifiers (GENERALIZE):** {', '.join(classification.quasi_identifiers)}")
+                if classification.linkage_identifiers:
+                    summary_lines.append(f"**Linkage Identifiers (PSEUDONYMIZE):** {', '.join(classification.linkage_identifiers)}")
+                if classification.date_columns:
+                    summary_lines.append(f"**Date Columns (DATE_SHIFT):** {', '.join(classification.date_columns)}")
+                if classification.sensitive_attributes:
+                    summary_lines.append(f"**Sensitive Attributes (KEEP):** {', '.join(classification.sensitive_attributes)}")
+                summary_lines.append("\n**Do you approve this classification?** (say 'yes' or 'approve' to proceed)")
+
+                summary_msg = "\n".join(summary_lines)
+                yield _sse_event("message", {"content": summary_msg})
+
+                # Add to session messages
+                final_assistant_msg = Message(role=MessageRole.ASSISTANT, content=summary_msg)
+                session.messages.append(final_assistant_msg)
 
         if should_break:
-            print(f"[Agentic Loop] Breaking due to terminal tool")
+            print(f"[Agentic Loop] Breaking due to terminal tool or successful classification")
             break
 
     if iteration >= MAX_AGENTIC_ITERATIONS:
@@ -336,6 +367,10 @@ async def _run_agentic_loop(
                 # Update context for next iteration
                 session_context = _build_session_context(session)
                 print(f"[Agentic Loop] Classification updated, status -> PROPOSED")
+                # Stop the loop - classification is complete, let LLM present to user
+                should_break = True
+                # Add final response asking for approval
+                final_content = result.get("message", "Classification complete. Please review and approve.")
 
         # Update final_content in case we hit max iterations or break
         final_content = content

@@ -33,6 +33,8 @@ app.add_middleware(
         "http://localhost:3000",
         "https://sadnxai.sadn.site",
         "https://internhub.sadn.site",
+        "https://openings-necessarily-tower-para.trycloudflare.com",
+        "https://screenshot-throw-markets-black.trycloudflare.com",
     ],
     allow_credentials=True,
     allow_methods=["*"],

@@ -15,11 +15,7 @@ The user has approved the classification. Pipeline execution is in progress or a
 3. **Report**: Generate compliance PDF report
 
 ## Your Role
-- If pipeline hasn't started, trigger it:
-```tool_call
-{"tool": "execute_pipeline", "arguments": {"confirmed": true}}
-```
-
+- If pipeline hasn't started: Call `execute_pipeline` tool with confirmed=true
 - During processing: Acknowledge the pipeline is running
 - After completion: Report results and guide to downloads
 

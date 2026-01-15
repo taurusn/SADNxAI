@@ -72,54 +72,8 @@ TOOLS = [
                         "description": "Mapping of each column name to its masking technique."
                     },
                     "reasoning": {
-                        "type": "object",
-                        "additionalProperties": {"type": "string"},
-                        "description": "Explanation for why each column was classified this way. Include regulation citations (e.g., 'PDPL Art.11 - data minimization')."
-                    },
-                    "regulation_refs": {
-                        "type": "object",
-                        "additionalProperties": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "regulation_id": {
-                                        "type": "string",
-                                        "description": "Regulation ID (e.g., 'PDPL-Art-11', 'SAMA-2.6.2')"
-                                    },
-                                    "relevance": {
-                                        "type": "string",
-                                        "description": "Why this regulation applies to this column"
-                                    }
-                                },
-                                "required": ["regulation_id", "relevance"]
-                            }
-                        },
-                        "description": "Per-column regulation references. Key is column name, value is array of {regulation_id, relevance}."
-                    },
-                    "generalization_config": {
-                        "type": "object",
-                        "properties": {
-                            "age_level": {
-                                "type": "integer",
-                                "minimum": 0,
-                                "maximum": 3,
-                                "description": "Age generalization: 0=exact, 1=5-year range, 2=10-year range, 3=category (Child/Adult/Senior)"
-                            },
-                            "location_level": {
-                                "type": "integer",
-                                "minimum": 0,
-                                "maximum": 3,
-                                "description": "Location generalization: 0=city, 1=province, 2=region, 3=country"
-                            },
-                            "date_level": {
-                                "type": "integer",
-                                "minimum": 0,
-                                "maximum": 3,
-                                "description": "Date generalization (for quasi dates): 0=day, 1=week, 2=month, 3=quarter"
-                            }
-                        },
-                        "description": "Configuration for generalization hierarchies"
+                        "type": "string",
+                        "description": "Brief explanation of the classification (1-2 sentences)."
                     }
                 },
                 "required": [
@@ -343,64 +297,24 @@ When analyzing data, consider the user's likely use case:
 - You MUST classify ALL columns from the file - missing columns will cause failure
 - INCREMENTAL MODE: If you miss some columns, send ONLY the missing columns in your next call - they will be merged automatically
 
-## EXAMPLE FORMAT (Column names are placeholders - use actual columns from CURRENT FILE!)
+## RESPONSE FORMAT
 
-Assume file has columns: [<col1>, <col2>, <col3>, ...]
-
-**Analysis**: Brief analysis of what the data appears to be and optimization goals.
+When analyzing a file:
+1. Briefly describe what the data appears to be
+2. Show a table with your classification proposal
+3. Call the `classify_columns` tool with your classification
+4. Ask if the user approves
 
 | Column | Classification | Technique | Justification |
 |--------|---------------|-----------|---------------|
-| <col1> | <category> | <technique> | <regulation citation> |
-| <col2> | <category> | <technique> | <regulation citation> |
+| col1 | direct_identifier | SUPPRESS | PDPL Art.11 |
+| col2 | quasi_identifier | GENERALIZE | k-anonymity |
 | ... | ... | ... | ... |
 
-**Recommendation**: Brief recommendation with privacy metric justification.
-
-```tool_call
-{"tool": "classify_columns", "arguments": {
-  "direct_identifiers": ["col1", "col2"],
-  "quasi_identifiers": ["col3", "col4"],
-  "linkage_identifiers": ["col5"],
-  "date_columns": ["col6"],
-  "sensitive_attributes": ["col7", "col8"],
-  "recommended_techniques": {"col1": "SUPPRESS", "col3": "GENERALIZE", "col5": "PSEUDONYMIZE", "col6": "DATE_SHIFT", "col7": "KEEP"},
-  "reasoning": {"col1": "Direct identifier per PDPL Art.11", "col3": "Quasi-identifier for k-anonymity"}
-}}
-```
-
-**IMPORTANT**: `reasoning` values must be STRINGS, not arrays! Write `"col": "reason"` NOT `"col": ["reason"]`
-
-Do you approve this classification, or would you like to discuss any adjustments?
-
----
-**User**: Yes, approved. Proceed.
-
-**Assistant**: Excellent! I'll now execute the anonymization pipeline with your approved classification.
-
-```tool_call
-{"tool": "execute_pipeline", "arguments": {"confirmed": true}}
-```
-
----
-**User**: The validation failed. Can you lower the thresholds?
-
-**Assistant**: I'll adjust the thresholds to more lenient values to help the validation pass.
-
-```tool_call
-{"tool": "update_thresholds", "arguments": {"k_anonymity_minimum": 2, "k_anonymity_target": 5, "l_diversity_minimum": 1, "l_diversity_target": 2, "t_closeness_minimum": 0.3, "t_closeness_target": 0.25}}
-```
-
-Thresholds updated. Would you like me to re-run the pipeline with these new settings?
-
----
-**User**: Yes, run it again / execute / re-run
-
-**Assistant**: Re-running the pipeline with the updated thresholds.
-
-```tool_call
-{"tool": "execute_pipeline", "arguments": {"confirmed": true}}
-```
+**IMPORTANT**:
+- `reasoning` values must be STRINGS, not arrays
+- Use ONLY column names from the CURRENT FILE section
+- Call the tool - don't just describe what you would do
 
 ## HANDLING USER QUESTIONS
 
