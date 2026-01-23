@@ -426,6 +426,229 @@ class Database:
         return [dict(r) for r in rows]
 
     # ============================================
+    # REGULATION MATCHING (Auto-link regulations to classifications)
+    # ============================================
+
+    @classmethod
+    async def match_regulations_for_classification(
+        cls,
+        column_name: str,
+        classification_type_id: str,
+        column_values_sample: List[str] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Smart regulation matching for a column classification.
+
+        Matches regulations based on:
+        1. Technique (via technique_regulations table) - highest priority
+        2. Column name patterns (via saudi_patterns table) - adds specific regulations
+        3. Classification type from applies_to arrays - catches general regulations
+
+        Args:
+            column_name: Name of the column being classified
+            classification_type_id: Classification type (direct_identifier, quasi_identifier, etc.)
+            column_values_sample: Optional sample values to check regex patterns
+
+        Returns:
+            List of matched regulations with relevance explanations
+        """
+        pool = await cls.get_pool()
+        matched_regulations = {}  # Use dict to dedupe by regulation_id
+
+        # Step 1: Get technique from classification type
+        technique_row = await pool.fetchrow("""
+            SELECT technique_id FROM classification_types WHERE id = $1
+        """, classification_type_id)
+
+        if not technique_row:
+            return []
+
+        technique_id = technique_row['technique_id']
+
+        # Step 2: Get regulations linked to this technique (primary source)
+        technique_regs = await pool.fetch("""
+            SELECT
+                r.id as regulation_id,
+                r.source,
+                r.article_number,
+                r.title,
+                r.summary,
+                tr.justification,
+                tr.rationale,
+                tr.priority
+            FROM technique_regulations tr
+            JOIN regulations r ON tr.regulation_id = r.id
+            WHERE tr.technique_id = $1
+            ORDER BY tr.priority
+        """, technique_id)
+
+        for reg in technique_regs:
+            reg_id = reg['regulation_id']
+            matched_regulations[reg_id] = {
+                'regulation_id': reg_id,
+                'source': reg['source'],
+                'article_number': reg['article_number'],
+                'title': reg['title'],
+                'relevance': reg['justification'] or f"Required for {technique_id} technique",
+                'match_type': 'technique',
+                'priority': reg['priority']
+            }
+
+        # Step 3: Check column name against saudi_patterns
+        col_lower = column_name.lower()
+        pattern_keywords = ['national_id', 'iqama', 'phone', 'iban', 'card', 'email',
+                          'pan', 'mobile', 'id_number', 'identification']
+
+        for keyword in pattern_keywords:
+            if keyword in col_lower:
+                pattern_regs = await pool.fetch("""
+                    SELECT
+                        sp.pattern_name,
+                        sp.description as pattern_description,
+                        r.id as regulation_id,
+                        r.source,
+                        r.article_number,
+                        r.title,
+                        r.summary
+                    FROM saudi_patterns sp
+                    JOIN regulations r ON sp.regulation_id = r.id
+                    WHERE sp.pattern_name ILIKE $1
+                       OR $2 ILIKE '%' || sp.pattern_name || '%'
+                """, f"%{keyword}%", col_lower)
+
+                for reg in pattern_regs:
+                    reg_id = reg['regulation_id']
+                    if reg_id not in matched_regulations:
+                        matched_regulations[reg_id] = {
+                            'regulation_id': reg_id,
+                            'source': reg['source'],
+                            'article_number': reg['article_number'],
+                            'title': reg['title'],
+                            'relevance': f"Column matches Saudi {reg['pattern_name']} pattern: {reg['pattern_description']}",
+                            'match_type': 'pattern',
+                            'priority': 0  # High priority for pattern matches
+                        }
+
+        # Step 4: Check applies_to arrays for additional matches
+        # Match on classification_type, technique, and column name keywords
+        search_terms = [classification_type_id, technique_id]
+
+        # Add column name keywords to search
+        col_keywords = col_lower.replace('_', ' ').split()
+        search_terms.extend([kw for kw in col_keywords if len(kw) > 2])
+
+        if search_terms:
+            applies_to_regs = await pool.fetch("""
+                SELECT id, source, article_number, title, summary, applies_to
+                FROM regulations
+                WHERE applies_to && $1::text[]
+            """, search_terms)
+
+            for reg in applies_to_regs:
+                reg_id = reg['id']
+                if reg_id not in matched_regulations:
+                    # Find which terms matched
+                    matched_terms = [t for t in search_terms if t in (reg['applies_to'] or [])]
+                    matched_regulations[reg_id] = {
+                        'regulation_id': reg_id,
+                        'source': reg['source'],
+                        'article_number': reg['article_number'],
+                        'title': reg['title'],
+                        'relevance': f"Applies to: {', '.join(matched_terms)}",
+                        'match_type': 'applies_to',
+                        'priority': 10  # Lower priority
+                    }
+
+        # Step 5: If column has financial/credit keywords, add PDPL-Art-24 and PDPL-Art-5
+        financial_keywords = ['amount', 'balance', 'credit', 'debit', 'transaction', 'payment',
+                            'salary', 'income', 'loan', 'merchant', 'fraud']
+        if any(kw in col_lower for kw in financial_keywords):
+            for fin_reg_id in ['PDPL-Art-24', 'PDPL-Art-5']:
+                if fin_reg_id not in matched_regulations:
+                    fin_reg = await pool.fetchrow("""
+                        SELECT id, source, article_number, title, summary
+                        FROM regulations WHERE id = $1
+                    """, fin_reg_id)
+                    if fin_reg:
+                        matched_regulations[fin_reg_id] = {
+                            'regulation_id': fin_reg_id,
+                            'source': fin_reg['source'],
+                            'article_number': fin_reg['article_number'],
+                            'title': fin_reg['title'],
+                            'relevance': f"Column contains financial data requiring additional protection",
+                            'match_type': 'financial',
+                            'priority': 5
+                        }
+
+        # Sort by priority and return
+        result = sorted(matched_regulations.values(), key=lambda x: x.get('priority', 99))
+        return result
+
+    @classmethod
+    async def save_classifications_with_auto_regulations(
+        cls,
+        job_id: UUID,
+        classifications: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """
+        Save classifications and automatically link matching regulations.
+
+        This is an enhanced version of save_classifications that:
+        1. Saves the classification
+        2. Automatically matches and links relevant regulations
+        3. Returns the saved classifications with their regulation links
+        """
+        pool = await cls.get_pool()
+
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                # Delete existing classifications for this job
+                await conn.execute(
+                    "DELETE FROM classifications_on_jobs WHERE job_id = $1",
+                    job_id
+                )
+
+                results = []
+                for c in classifications:
+                    # Insert classification
+                    row = await conn.fetchrow("""
+                        INSERT INTO classifications_on_jobs
+                        (job_id, column_name, classification_type_id, reasoning, generalization_level)
+                        VALUES ($1, $2, $3, $4, $5)
+                        RETURNING *
+                    """, job_id, c['column_name'], c['classification_type_id'],
+                        c.get('reasoning'), c.get('generalization_level', 0))
+
+                    classification_id = row['id']
+
+                    # Auto-match regulations
+                    matched_regs = await cls.match_regulations_for_classification(
+                        column_name=c['column_name'],
+                        classification_type_id=c['classification_type_id']
+                    )
+
+                    # Save regulation links
+                    saved_regs = []
+                    for reg in matched_regs:
+                        try:
+                            await conn.execute("""
+                                INSERT INTO classification_regulations
+                                (classification_on_job_id, regulation_id, relevance)
+                                VALUES ($1, $2, $3)
+                                ON CONFLICT (classification_on_job_id, regulation_id) DO UPDATE
+                                SET relevance = EXCLUDED.relevance
+                            """, classification_id, reg['regulation_id'], reg.get('relevance', ''))
+                            saved_regs.append(reg)
+                        except Exception as e:
+                            print(f"Failed to link regulation {reg['regulation_id']}: {e}")
+
+                    result = dict(row)
+                    result['regulation_refs'] = saved_regs
+                    results.append(result)
+
+        return results
+
+    # ============================================
     # UTILITY METHODS
     # ============================================
 

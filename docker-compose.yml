@@ -6,11 +6,11 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        - NEXT_PUBLIC_API_URL=https://sadnxaiapi.sadn.site/api
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8000/api}
     ports:
       - "3000:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=https://sadnxaiapi.sadn.site/api
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8000/api}
     depends_on:
       - chat-service
 
@@ -21,9 +21,9 @@ services:
     ports:
       - "8000:8000"
     environment:
-      # vLLM Configuration (default)
+      # vLLM Configuration (external endpoint via Cloudflare tunnel)
       - LLM_PROVIDER=${LLM_PROVIDER:-vllm}
-      - VLLM_URL=http://vllm:8000
+      - VLLM_URL=${VLLM_URL:-http://vllm:8000}
       - VLLM_API_KEY=${VLLM_API_KEY:-token-sadnxai}
       - VLLM_MODEL=${VLLM_MODEL:-meta-llama/Llama-3.1-8B-Instruct}
       # Fallback options
@@ -47,8 +47,6 @@ services:
         condition: service_started
       validation-service:
         condition: service_started
-      vllm:
-        condition: service_healthy
 
   masking-service:
     build:
@@ -106,7 +104,10 @@ services:
       timeout: 5s
       retries: 5
 
+  # Local vLLM - only used when running with: docker compose --profile local-llm up
   vllm:
+    profiles:
+      - local-llm
     image: vllm/vllm-openai:latest
     ports:
       - "8080:8000"

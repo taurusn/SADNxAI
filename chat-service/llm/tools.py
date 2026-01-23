@@ -318,7 +318,12 @@ class ToolExecutor:
 
         if db_save_result:
             result["db_saved"] = db_save_result.get("success", False)
-            if not db_save_result.get("success"):
+            if db_save_result.get("success"):
+                regs_linked = db_save_result.get("regulations_linked", 0)
+                if regs_linked > 0:
+                    result["regulations_linked"] = regs_linked
+                    print(f"[Column Validation] Linked {regs_linked} PDPL/SAMA regulations to classifications")
+            else:
                 result["db_error"] = db_save_result.get("error")
 
         return result
@@ -366,7 +371,14 @@ class ToolExecutor:
         print(f"[Column Validation] Saved partial classification with {len(args.get('direct_identifiers', []) + args.get('quasi_identifiers', []) + args.get('linkage_identifiers', []) + args.get('date_columns', []) + args.get('sensitive_attributes', []))} columns")
 
     async def _save_classifications_to_db(self, classifications: list) -> Dict[str, Any]:
-        """Save classifications to PostgreSQL database"""
+        """
+        Save classifications to PostgreSQL database with automatic regulation linking.
+
+        Uses the smart regulation matching function that:
+        1. Matches regulations based on technique (from technique_regulations table)
+        2. Matches Saudi-specific patterns (national_id, iban, phone, etc.)
+        3. Matches financial/sensitive data keywords
+        """
         from shared.database import Database
         from uuid import UUID
 
@@ -377,14 +389,21 @@ class ToolExecutor:
             if not job:
                 await Database.create_job(job_id, self.session.title)
 
-            # Save classifications
-            saved = await Database.save_classifications(job_id, classifications)
+            # Save classifications with auto-linked regulations
+            saved = await Database.save_classifications_with_auto_regulations(job_id, classifications)
+
+            # Count total regulations linked
+            total_regs = sum(len(c.get('regulation_refs', [])) for c in saved)
+
             return {
                 "success": True,
-                "saved_count": len(saved)
+                "saved_count": len(saved),
+                "regulations_linked": total_regs
             }
         except Exception as e:
+            import traceback
             print(f"Failed to save classifications to DB: {e}")
+            traceback.print_exc()
             return {
                 "success": False,
                 "error": str(e)
