@@ -26,16 +26,10 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Configure CORS
+# Configure CORS - allow cloudflare tunnels
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "https://sadnxai.sadn.site",
-        "https://internhub.sadn.site",
-        "https://openings-necessarily-tower-para.trycloudflare.com",
-        "https://screenshot-throw-markets-black.trycloudflare.com",
-    ],
+    allow_origin_regex=r"https://.*\.trycloudflare\.com|http://localhost:.*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
