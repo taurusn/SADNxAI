@@ -293,6 +293,7 @@ class APIClient:
         self.max_retries = max_retries
         self._client: httpx.AsyncClient | None = None
         self._sessions_created: list[str] = []
+        self._sessions_created_total: int = 0  # Track total even after cleanup
         self._sessions_cleaned: int = 0
 
     async def __aenter__(self) -> "APIClient":
@@ -378,6 +379,7 @@ class APIClient:
         response = await self._request_with_retry("POST", "/api/sessions")
         session_id = response.json()["id"]
         self._sessions_created.append(session_id)
+        self._sessions_created_total += 1
         logger.debug(f"Created session: {session_id}")
         return session_id
 
@@ -483,8 +485,8 @@ class APIClient:
 
     @property
     def sessions_created_count(self) -> int:
-        """Number of sessions created."""
-        return len(self._sessions_created)
+        """Number of sessions created (total, even after cleanup)."""
+        return self._sessions_created_total
 
     @property
     def sessions_cleaned_count(self) -> int:
@@ -685,7 +687,10 @@ class LLMEvaluator:
         # Check must_not_be_suppressed
         for col in critical.get("must_not_be_suppressed", []):
             techniques = actual.get("recommended_techniques", {})
-            passed = techniques.get(col) != "SUPPRESS"
+            technique = techniques.get(col)
+            # Fail if column is missing (None) OR if technique is SUPPRESS
+            # A missing column means LLM didn't classify it, which is a failure
+            passed = technique is not None and technique != "SUPPRESS"
             results.append(EvalResult(
                 test_id=f"CRIT-{file_name}-nosuppress-{col}",
                 category="classification",
@@ -693,10 +698,17 @@ class LLMEvaluator:
                 passed=passed,
                 score=1.0 if passed else 0.0,
                 max_score=1.0,
-                details={"column": col, "actual_technique": techniques.get(col)},
+                details={
+                    "column": col,
+                    "actual_technique": technique,
+                    "error": "Column not classified" if technique is None else None,
+                },
             ))
             if not passed:
-                logger.warning(f"CRITICAL FAILURE: {col} incorrectly marked for SUPPRESS")
+                if technique is None:
+                    logger.warning(f"CRITICAL FAILURE: {col} not found in recommended_techniques")
+                else:
+                    logger.warning(f"CRITICAL FAILURE: {col} incorrectly marked for SUPPRESS")
 
         return results
 
