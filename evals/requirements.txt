@@ -1,5 +1,8 @@
 # SADNxAI LLM Evaluation Framework Dependencies
 #
+# REQUIRES: Python 3.10 or higher
+#   (Uses modern type hints: list[str], dict[str, Any], X | None)
+#
 # Install with:
 #   pip install -r evals/requirements.txt
 #

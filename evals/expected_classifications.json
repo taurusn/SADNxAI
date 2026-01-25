@@ -92,7 +92,7 @@
       "DateCreated": "DATE_SHIFT",
       "Amount": "KEEP",
       "Flag": "KEEP",
-      "Notes": "KEEP"
+      "Notes": "TEXT_SCRUB"
     },
     "critical_checks": {
       "must_be_direct": ["ID_Number", "PhoneNo", "EMAIL_ADDRESS"],

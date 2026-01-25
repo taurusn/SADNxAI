@@ -102,6 +102,13 @@ RETRY_BACKOFF_MAX = 16.0  # seconds
 DEFAULT_TIMEOUT = 120.0  # seconds for LLM calls
 HEALTH_CHECK_TIMEOUT = 10.0  # seconds for health checks
 
+# Parallel execution
+MAX_PARALLEL_SESSIONS = 3  # max concurrent sessions to avoid overwhelming API
+
+# File size limits
+MAX_FILE_SIZE_MB = 10  # maximum test file size in megabytes
+MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
+
 # Validation thresholds
 MIN_REASONING_LENGTH = 50  # minimum characters for valid reasoning
 MIN_REASONING_KEYWORDS = 2  # minimum privacy keywords required
@@ -439,7 +446,18 @@ class APIClient:
 
         Returns:
             Upload response data
+
+        Raises:
+            ValueError: If file exceeds MAX_FILE_SIZE_BYTES
         """
+        # Validate file size before upload
+        file_size = file_path.stat().st_size
+        if file_size > MAX_FILE_SIZE_BYTES:
+            raise ValueError(
+                f"File {file_path.name} is {file_size / 1024 / 1024:.1f}MB, "
+                f"exceeds limit of {MAX_FILE_SIZE_MB}MB"
+            )
+
         with open(file_path, "rb") as f:
             files = {"file": (file_path.name, f, "text/csv")}
             response = await self._request_with_retry(
@@ -543,6 +561,7 @@ class LLMEvaluator:
         self.data_dir = self.evals_dir / "data"
         self._client: APIClient | None = None
         self._start_time: float = 0
+        self._semaphore: asyncio.Semaphore | None = None
 
         # Load expected classifications
         with open(self.evals_dir / "expected_classifications.json") as f:
@@ -854,9 +873,16 @@ class LLMEvaluator:
         logger.info("=" * 40)
 
         if self.parallel:
-            # Run all files in parallel
+            # Run files in parallel with concurrency limit
+            if self._semaphore is None:
+                self._semaphore = asyncio.Semaphore(MAX_PARALLEL_SESSIONS)
+
+            async def rate_limited_eval(file_name: str, expected: ExpectedClassification):
+                async with self._semaphore:  # type: ignore
+                    return await self._eval_single_file(file_name, expected)
+
             tasks = [
-                self._eval_single_file(file_name, expected)
+                rate_limited_eval(file_name, expected)
                 for file_name, expected in self.expected.items()
             ]
             results_lists = await asyncio.gather(*tasks, return_exceptions=True)
@@ -1533,7 +1559,7 @@ class LLMEvaluator:
         report_dir = self.evals_dir / "reports"
         report_dir.mkdir(exist_ok=True)
 
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         report_file = report_dir / f"eval_{self.provider}_{timestamp}.json"
 
         with open(report_file, "w") as f:
