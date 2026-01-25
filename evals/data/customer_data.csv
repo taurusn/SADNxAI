@@ -1,0 +1,6 @@
+customer_id,national_id,full_name,email,phone,date_of_birth,age,gender,city,region,occupation,income_bracket,account_balance,credit_score,registration_date,last_activity
+CUST-001,1098765432,Ahmed Al-Rashid,ahmed@example.com,+966512345678,1989-05-20,35,M,Riyadh,Central,Engineer,50000-100000,25000.50,750,2020-01-15,2024-01-20
+CUST-002,1087654321,Sara Al-Ghamdi,sara@example.com,0551234567,1996-08-15,28,F,Jeddah,Western,Doctor,100000-200000,150000.00,680,2019-06-10,2024-01-21
+CUST-003,2123456789,Khalid Al-Otaibi,khalid@example.com,+966523456789,1975-03-10,49,M,Dammam,Eastern,Manager,75000-150000,85000.00,720,2018-03-22,2024-01-22
+CUST-004,1076543210,Fatima Al-Zahrani,fatima@example.com,0562345678,1988-11-25,36,F,Abha,Southern,Teacher,30000-50000,35000.00,695,2021-09-05,2024-01-23
+CUST-005,2098765432,Omar Al-Harbi,omar@example.com,+966534567890,1992-07-30,32,M,Tabuk,Northern,Accountant,60000-90000,75000.00,710,2022-02-18,2024-01-24

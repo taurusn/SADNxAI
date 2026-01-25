@@ -100,5 +100,35 @@
       "must_not_be_suppressed": ["Amount", "Flag"]
     },
     "notes": "Tests column name variations (CamelCase, UPPERCASE, snake_case) and PII embedded in Notes field"
+  },
+  "customer_data.csv": {
+    "direct_identifiers": ["national_id", "full_name", "email", "phone"],
+    "quasi_identifiers": ["age", "gender", "city", "region", "occupation", "income_bracket"],
+    "linkage_identifiers": ["customer_id"],
+    "date_columns": ["date_of_birth", "registration_date", "last_activity"],
+    "sensitive_attributes": ["account_balance", "credit_score"],
+    "recommended_techniques": {
+      "national_id": "SUPPRESS",
+      "full_name": "SUPPRESS",
+      "email": "SUPPRESS",
+      "phone": "SUPPRESS",
+      "age": "GENERALIZE",
+      "gender": "GENERALIZE",
+      "city": "GENERALIZE",
+      "region": "GENERALIZE",
+      "occupation": "GENERALIZE",
+      "income_bracket": "GENERALIZE",
+      "customer_id": "PSEUDONYMIZE",
+      "date_of_birth": "DATE_SHIFT",
+      "registration_date": "DATE_SHIFT",
+      "last_activity": "DATE_SHIFT",
+      "account_balance": "KEEP",
+      "credit_score": "KEEP"
+    },
+    "critical_checks": {
+      "must_be_direct": ["national_id", "full_name", "email", "phone"],
+      "must_be_sensitive": ["account_balance", "credit_score"],
+      "must_not_be_suppressed": ["account_balance", "credit_score", "customer_id"]
+    }
   }
 }
