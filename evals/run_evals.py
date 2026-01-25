@@ -22,8 +22,8 @@ Usage:
     # Run specific category only
     python evals/run_evals.py --category classification
 
-    # Run in direct LLM mode (no services needed)
-    python evals/run_evals.py --direct --provider vllm
+    # Run in direct LLM mode (TODO: not yet implemented)
+    # python evals/run_evals.py --direct --provider vllm
 
     # Run with parallel execution
     python evals/run_evals.py --parallel
@@ -62,6 +62,7 @@ import asyncio
 import json
 import logging
 import sys
+import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -219,6 +220,9 @@ class EvalResult:
     def status(self) -> EvalStatus:
         """Get the status of this result."""
         if self.error:
+            # Distinguish between "skipped" (couldn't run) and "error" (ran but crashed)
+            if "not found" in self.error.lower() or "skipped" in self.error.lower():
+                return EvalStatus.SKIPPED
             return EvalStatus.ERROR
         return EvalStatus.PASSED if self.passed else EvalStatus.FAILED
 
@@ -289,6 +293,7 @@ class APIClient:
         self.max_retries = max_retries
         self._client: httpx.AsyncClient | None = None
         self._sessions_created: list[str] = []
+        self._sessions_cleaned: int = 0
 
     async def __aenter__(self) -> "APIClient":
         """Async context manager entry."""
@@ -297,7 +302,7 @@ class APIClient:
 
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
         """Async context manager exit with session cleanup."""
-        await self.cleanup_sessions()
+        self._sessions_cleaned = await self.cleanup_sessions()
         if self._client:
             await self._client.aclose()
 
@@ -398,14 +403,28 @@ class APIClient:
         """
         Clean up all sessions created during this client's lifetime.
 
+        This method is idempotent - calling it multiple times is safe.
+        After cleanup, the sessions list is cleared to prevent double-deletion.
+
         Returns:
-            Number of sessions successfully cleaned up
+            Number of sessions successfully cleaned up (0 if already cleaned)
         """
+        if not self._sessions_created:
+            # Already cleaned up or no sessions created
+            return self._sessions_cleaned
+
         cleaned = 0
+        total = len(self._sessions_created)
         for session_id in self._sessions_created:
             if await self.delete_session(session_id):
                 cleaned += 1
-        logger.info(f"Cleaned up {cleaned}/{len(self._sessions_created)} sessions")
+
+        logger.info(f"Cleaned up {cleaned}/{total} sessions")
+
+        # Clear the list to make this idempotent
+        self._sessions_created.clear()
+        self._sessions_cleaned = cleaned
+
         return cleaned
 
     async def upload_file(self, session_id: str, file_path: Path) -> dict[str, Any]:
@@ -466,6 +485,11 @@ class APIClient:
     def sessions_created_count(self) -> int:
         """Number of sessions created."""
         return len(self._sessions_created)
+
+    @property
+    def sessions_cleaned_count(self) -> int:
+        """Number of sessions successfully cleaned up."""
+        return self._sessions_cleaned
 
 
 # =============================================================================
@@ -540,10 +564,6 @@ class LLMEvaluator:
         Returns:
             True if all services are healthy
         """
-        if self.direct_mode:
-            logger.info("Direct mode: skipping service health check")
-            return True
-
         if not self._client:
             raise RuntimeError("Evaluator not initialized. Use async with context.")
 
@@ -1398,7 +1418,7 @@ class LLMEvaluator:
         total_score = sum(r.score for r in self.results)
         max_score = sum(r.max_score for r in self.results)
 
-        duration_ms = (asyncio.get_event_loop().time() - self._start_time) * 1000 if self._start_time else 0
+        duration_ms = (time.monotonic() - self._start_time) * 1000 if self._start_time else 0
 
         return EvalReport(
             timestamp=datetime.now().isoformat(),
@@ -1449,23 +1469,30 @@ class LLMEvaluator:
                 print(f"  ✗ {failure}")
             print()
 
-        # Show failed tests
+        # Show failed and skipped tests
         failed = [r for r in report.results if not r.passed]
         if failed:
-            print(f"Failed Tests ({len(failed)}):")
+            print(f"Failed/Skipped Tests ({len(failed)}):")
             print("-" * 40)
             for r in failed[:10]:
-                status = "⚠" if r.error else "✗"
-                print(f"  {status} {r.test_id}: {r.description}")
+                if r.status == EvalStatus.SKIPPED:
+                    icon = "⊘"  # Skipped
+                elif r.status == EvalStatus.ERROR:
+                    icon = "⚠"  # Error
+                else:
+                    icon = "✗"  # Failed
+                print(f"  {icon} {r.test_id}: {r.description}")
                 if r.error:
-                    print(f"      Error: {r.error}")
+                    print(f"      {r.status.value}: {r.error}")
             if len(failed) > 10:
                 print(f"  ... and {len(failed) - 10} more")
             print()
 
         # Summary
         passed = [r for r in report.results if r.passed]
-        print(f"Summary: {len(passed)}/{len(report.results)} tests passed")
+        skipped = [r for r in report.results if r.status == EvalStatus.SKIPPED]
+        errors = [r for r in report.results if r.status == EvalStatus.ERROR]
+        print(f"Summary: {len(passed)} passed, {len(failed) - len(skipped) - len(errors)} failed, {len(skipped)} skipped, {len(errors)} errors")
         print(f"Sessions: {report.sessions_created} created, {report.sessions_cleaned} cleaned")
         print()
 
@@ -1542,14 +1569,24 @@ class LLMEvaluator:
 
         Returns:
             Complete EvalReport
+
+        Raises:
+            NotImplementedError: If direct_mode is True (not yet implemented)
         """
-        self._start_time = asyncio.get_event_loop().time()
+        # Check for unimplemented direct mode
+        if self.direct_mode:
+            raise NotImplementedError(
+                "Direct LLM testing mode is not yet implemented. "
+                "Please run without --direct flag and ensure chat-service is running. "
+                "To implement: add direct vLLM/Claude API calls bypassing chat-service."
+            )
+
+        self._start_time = time.monotonic()
 
         logger.info("Starting SADNxAI LLM Evaluation")
         logger.info(f"Provider: {self.provider}")
         logger.info(f"Base URL: {self.base_url}")
         logger.info(f"Parallel: {self.parallel}")
-        logger.info(f"Direct Mode: {self.direct_mode}")
 
         # Health check
         if not await self.check_services():
@@ -1590,12 +1627,16 @@ class LLMEvaluator:
             elif category == "regulatory":
                 self.results.extend(await self.eval_regulatory())
 
-        # Generate report
+        # Cleanup sessions before generating report to get accurate count
+        if self._client:
+            await self._client.cleanup_sessions()
+
+        # Generate report with accurate cleanup count
         report = self._generate_report()
 
-        # Update cleaned count after cleanup
+        # Update cleaned count from actual cleanup result
         if self._client:
-            report.sessions_cleaned = self._client.sessions_created_count
+            report.sessions_cleaned = self._client.sessions_cleaned_count
 
         # Print and save
         self._print_report(report)
@@ -1657,7 +1698,7 @@ Examples:
     parser.add_argument(
         "--direct",
         action="store_true",
-        help="Test LLM directly without chat-service (not implemented yet)",
+        help="Test LLM directly without chat-service (TODO: not yet implemented)",
     )
 
     parser.add_argument(

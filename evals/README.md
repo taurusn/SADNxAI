@@ -296,7 +296,7 @@ docker compose logs vllm | grep "ready"
 
 ```bash
 # Install dependencies
-pip install httpx
+pip install -r evals/requirements.txt
 
 # Run with debug logging
 python evals/run_evals.py -v --log-level DEBUG

@@ -1,0 +1,10 @@
+# SADNxAI LLM Evaluation Framework Dependencies
+#
+# Install with:
+#   pip install -r evals/requirements.txt
+#
+# Or if using the main project:
+#   pip install -r requirements.txt  (includes these)
+
+# Async HTTP client for API calls
+httpx>=0.25.0,<1.0.0
