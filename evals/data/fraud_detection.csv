@@ -1,0 +1,6 @@
+customer_id,national_id,phone,email,age,city,gender,transaction_date,transaction_amount,fraud_flag,account_id
+CUST-001,1098765432,+966512345678,ahmed@example.com,35,Riyadh,M,2024-01-15,5000.00,0,ACC-12345
+CUST-002,1087654321,0551234567,sara@example.com,28,Jeddah,F,2024-01-16,15000.00,1,ACC-23456
+CUST-003,1076543210,+966523456789,khalid@example.com,42,Dammam,M,2024-01-17,2500.00,0,ACC-34567
+CUST-004,1065432109,0562345678,fatima@example.com,31,Riyadh,F,2024-01-18,50000.00,1,ACC-45678
+CUST-005,1054321098,+966534567890,omar@example.com,55,Makkah,M,2024-01-19,8000.00,0,ACC-56789

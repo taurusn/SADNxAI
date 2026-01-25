@@ -1,0 +1,6 @@
+patient_id,national_id,full_name,phone,email,birth_date,gender,city,admission_date,discharge_date,diagnosis,treatment_cost
+PAT-001,1098765432,Ahmed Mohammed,+966512345678,ahmed@email.com,1989-05-20,M,Riyadh,2024-01-10,2024-01-15,Diabetes,5000.00
+PAT-002,2123456789,Sara Abdullah,0551234567,sara@email.com,1996-08-15,F,Jeddah,2024-01-12,2024-01-14,Hypertension,3500.00
+PAT-003,1087654321,Khalid Ibrahim,+966523456789,khalid@email.com,1975-03-10,M,Dammam,2024-01-14,2024-01-20,Heart Disease,25000.00
+PAT-004,2098765432,Fatima Nasser,0562345678,fatima@email.com,1988-11-25,F,Makkah,2024-01-16,2024-01-18,Fracture,8000.00
+PAT-005,1076543210,Omar Saleh,+966534567890,omar@email.com,1992-07-30,M,Medina,2024-01-18,2024-01-22,Surgery,45000.00

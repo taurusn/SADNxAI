@@ -1,0 +1,104 @@
+{
+  "fraud_detection.csv": {
+    "direct_identifiers": ["national_id", "phone", "email"],
+    "quasi_identifiers": ["age", "city", "gender"],
+    "linkage_identifiers": ["customer_id", "account_id"],
+    "date_columns": ["transaction_date"],
+    "sensitive_attributes": ["transaction_amount", "fraud_flag"],
+    "recommended_techniques": {
+      "national_id": "SUPPRESS",
+      "phone": "SUPPRESS",
+      "email": "SUPPRESS",
+      "age": "GENERALIZE",
+      "city": "GENERALIZE",
+      "gender": "GENERALIZE",
+      "customer_id": "PSEUDONYMIZE",
+      "account_id": "PSEUDONYMIZE",
+      "transaction_date": "DATE_SHIFT",
+      "transaction_amount": "KEEP",
+      "fraud_flag": "KEEP"
+    },
+    "critical_checks": {
+      "must_be_direct": ["national_id", "phone", "email"],
+      "must_be_sensitive": ["transaction_amount", "fraud_flag"],
+      "must_not_be_suppressed": ["transaction_amount", "fraud_flag", "customer_id"]
+    }
+  },
+  "open_banking.csv": {
+    "direct_identifiers": ["iban", "full_name", "phone_number"],
+    "quasi_identifiers": ["city", "account_type"],
+    "linkage_identifiers": ["account_id", "customer_id"],
+    "date_columns": ["last_transaction_date"],
+    "sensitive_attributes": ["balance", "credit_score"],
+    "recommended_techniques": {
+      "iban": "SUPPRESS",
+      "full_name": "SUPPRESS",
+      "phone_number": "SUPPRESS",
+      "city": "GENERALIZE",
+      "account_type": "GENERALIZE",
+      "account_id": "PSEUDONYMIZE",
+      "customer_id": "PSEUDONYMIZE",
+      "last_transaction_date": "DATE_SHIFT",
+      "balance": "KEEP",
+      "credit_score": "KEEP"
+    },
+    "critical_checks": {
+      "must_be_direct": ["iban", "full_name", "phone_number"],
+      "must_be_sensitive": ["balance", "credit_score"],
+      "must_not_be_suppressed": ["balance", "credit_score", "customer_id", "account_id"]
+    }
+  },
+  "healthcare.csv": {
+    "direct_identifiers": ["national_id", "full_name", "phone", "email"],
+    "quasi_identifiers": ["gender", "city"],
+    "linkage_identifiers": ["patient_id"],
+    "date_columns": ["birth_date", "admission_date", "discharge_date"],
+    "sensitive_attributes": ["diagnosis", "treatment_cost"],
+    "recommended_techniques": {
+      "national_id": "SUPPRESS",
+      "full_name": "SUPPRESS",
+      "phone": "SUPPRESS",
+      "email": "SUPPRESS",
+      "gender": "GENERALIZE",
+      "city": "GENERALIZE",
+      "patient_id": "PSEUDONYMIZE",
+      "birth_date": "DATE_SHIFT",
+      "admission_date": "DATE_SHIFT",
+      "discharge_date": "DATE_SHIFT",
+      "diagnosis": "KEEP",
+      "treatment_cost": "KEEP"
+    },
+    "critical_checks": {
+      "must_be_direct": ["national_id", "full_name", "phone", "email"],
+      "must_be_sensitive": ["diagnosis", "treatment_cost"],
+      "must_not_be_suppressed": ["diagnosis", "treatment_cost", "patient_id"]
+    }
+  },
+  "edge_cases.csv": {
+    "direct_identifiers": ["name", "ID_Number", "PhoneNo", "EMAIL_ADDRESS"],
+    "quasi_identifiers": ["Age_Years", "CITY_NAME", "Status"],
+    "linkage_identifiers": ["id"],
+    "date_columns": ["DateCreated"],
+    "sensitive_attributes": ["Amount", "Flag", "Notes"],
+    "recommended_techniques": {
+      "name": "SUPPRESS",
+      "ID_Number": "SUPPRESS",
+      "PhoneNo": "SUPPRESS",
+      "EMAIL_ADDRESS": "SUPPRESS",
+      "Age_Years": "GENERALIZE",
+      "CITY_NAME": "GENERALIZE",
+      "Status": "GENERALIZE",
+      "id": "PSEUDONYMIZE",
+      "DateCreated": "DATE_SHIFT",
+      "Amount": "KEEP",
+      "Flag": "KEEP",
+      "Notes": "KEEP"
+    },
+    "critical_checks": {
+      "must_be_direct": ["ID_Number", "PhoneNo", "EMAIL_ADDRESS"],
+      "must_be_sensitive": ["Amount", "Flag"],
+      "must_not_be_suppressed": ["Amount", "Flag"]
+    },
+    "notes": "Tests column name variations (CamelCase, UPPERCASE, snake_case) and PII embedded in Notes field"
+  }
+}
